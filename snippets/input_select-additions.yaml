@@ -1,0 +1,20 @@
+# =============================================================================
+# Landroid dashboard addition for /config/input_select.yaml
+#
+# Paste the block below at the TOP LEVEL of input_select.yaml
+# (a new map key next to the existing entries).
+# =============================================================================
+
+# Schedule editor: weekday of the entry being added or edited.
+landroid_sched_day:
+  name: "Landroid schedule day"
+  options:
+    - Monday
+    - Tuesday
+    - Wednesday
+    - Thursday
+    - Friday
+    - Saturday
+    - Sunday
+  initial: Monday
+  icon: mdi:calendar-week

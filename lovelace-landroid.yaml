@@ -1,0 +1,557 @@
+# =============================================================================
+# Landroid — a Worx-app-style dashboard (YAML mode)
+#
+# Deploy to: /config/lovelace-landroid.yaml
+# Registered in configuration.yaml under `lovelace: dashboards:
+# landroid-dashboard:` (see snippets/configuration-additions.yaml).
+#
+# Prerequisites (see README.md):
+#   - Device renamed to "My Landroid" so entity IDs are my_landroid_* and the
+#     mower entity is lawn_mower.my_landroid.
+#   - The my_landroid entities listed in README.md enabled (most are disabled
+#     by default).
+#   - The schedule editor helpers + scripts from snippets/ pasted into the
+#     live input_* / scripts files (they live outside this dashboard file).
+#
+# Custom cards used (all already installed via HACS):
+#   custom:landroid-card, custom:button-card, custom:flex-table-card,
+#   custom:auto-entities
+#
+# Layout note: masonry is used with its default column behavior — on a phone
+# it renders the intended single-column card stack like the Worx app; on
+# desktop it widens. If a stricter phone-like layout is wanted on desktop,
+# switch a view to `type: sections` with one section instead.
+#
+# button-card note: labels use [[[ ... ]]] JS blocks (not ${...} shorthand) —
+# the shorthand is not supported by every button-card build.
+# =============================================================================
+
+title: Landroid
+
+# Shared Worx-style tile look, reused by every app-replica tile below.
+button_card_templates:
+  worx_tile:
+    aspect_ratio: 1/1
+    styles:
+      card:
+        - border-radius: 16px
+        - background-color: "#FFFFFF"
+        - box-shadow: 0px 2px 6px rgba(59, 59, 59, 0.08)
+      icon:
+        - color: "#8A8A8A"
+        - width: 32px
+      name:
+        - color: "#3B3B3B"
+        - font-size: 13px
+        - font-weight: 600
+        - justify-self: center
+      label:
+        - color: "#8A8A8A"
+        - font-size: 11px
+        - justify-self: center
+      state:
+        - color: "#8A8A8A"
+        - font-size: 11px
+        - justify-self: center
+
+views:
+  # ===========================================================================
+  # Home — the Worx app's Dashboard screen
+  # ===========================================================================
+  - title: Home
+    path: home
+    icon: mdi:robot-mower
+    theme: worx
+    type: masonry
+    cards:
+      # Main status card: image, status, battery popup, toolbar (start/pause/
+      # dock/edgecut) and the minimal stats row. battery/info/statistics/
+      # settings popups are left to the card's auto-discovery.
+      - type: custom:landroid-card
+        entity: lawn_mower.my_landroid
+        image: default
+        image_size: 4
+        show_name: true
+        show_status: true
+        show_toolbar: true
+        show_edgecut: true
+        show_animation: true
+        stats:
+          default:
+            - entity_id: sensor.my_landroid_mower_runtime_total
+              subtitle: Work time
+              value_template: >-
+                {% if value in ['unknown', 'unavailable'] %}–{% else %}{{ value | float(0) | round(1) }} h{% endif %}
+            - entity_id: sensor.my_landroid_blade_runtime_total
+              subtitle: Blade time
+              value_template: >-
+                {% if value in ['unknown', 'unavailable'] %}–{% else %}{{ value | float(0) | round(1) }} h{% endif %}
+            - entity_id: sensor.my_landroid_distance_driven_total
+              subtitle: Distance
+              value_template: >-
+                {% if value in ['unknown', 'unavailable'] %}–{% else %}{{ value | float(0) | round(1) }} km{% endif %}
+
+      - type: entity
+        entity: sensor.my_landroid_next_schedule
+        name: Next scheduled start
+        icon: mdi:calendar-clock
+
+      # App-replica tile grid (2 columns, like the Worx app home screen).
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          # Edge routine — one-off edge cut along the boundary wire.
+          - type: custom:button-card
+            template: worx_tile
+            name: Edge routine
+            icon: mdi:grass
+            entity: lawn_mower.my_landroid
+            show_label: true
+            label: |
+              [[[
+                return states['lawn_mower.my_landroid'] ? (states['lawn_mower.my_landroid'].state === 'unavailable' ? 'Asleep' : 'Tap to run') : 'Tap to run';
+              ]]]
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.my_landroid_edge_cut
+            styles:
+              icon:
+                - color: "#FF8200"
+            state:
+              - value: unavailable
+                styles:
+                  icon:
+                    - color: "#BDBDBD"
+
+          # One Time Schedule — mows once for the slider's duration.
+          # Tap: run. Hold: open the slider to change the duration.
+          - type: custom:button-card
+            template: worx_tile
+            name: One Time Schedule
+            icon: mdi:calendar-clock
+            entity: lawn_mower.my_landroid
+            show_label: true
+            label: |
+              [[[
+                const mower = states['lawn_mower.my_landroid'];
+                const mins = states['input_number.landroid_ots_minutes'];
+                if (!mower || mower.state === 'unavailable') return 'Asleep';
+                return mins ? Math.round(parseFloat(mins.state)) + ' min' : '';
+              ]]]
+            tap_action:
+              action: perform-action
+              perform_action: script.landroid_ots
+            hold_action:
+              action: more-info
+              entity: input_number.landroid_ots_minutes
+            styles:
+              icon:
+                - color: "#FF8200"
+            state:
+              - value: unavailable
+                styles:
+                  icon:
+                    - color: "#BDBDBD"
+
+          # Party Mode — pause the weekly schedule (app tile replica).
+          - type: custom:button-card
+            template: worx_tile
+            entity: switch.my_landroid_party_mode
+            name: Party Mode
+            icon: mdi:party-popper
+            show_label: true
+            label: |
+              [[[
+                const s = states['switch.my_landroid_party_mode'];
+                return (!s || s.state === 'unavailable' || s.state === 'unknown') ? 'Asleep' : (s.state === 'on' ? 'On' : 'Off');
+              ]]]
+            state:
+              - value: "on"
+                styles:
+                  icon:
+                    - color: "#FF8200"
+                  label:
+                    - color: "#FF8200"
+              - value: unavailable
+                styles:
+                  icon:
+                    - color: "#BDBDBD"
+
+          # Lock — child lock on the mower's buttons.
+          - type: custom:button-card
+            template: worx_tile
+            entity: switch.my_landroid_lock
+            name: Lock
+            icon: mdi:lock
+            show_label: true
+            label: |
+              [[[
+                const s = states['switch.my_landroid_lock'];
+                return (!s || s.state === 'unavailable' || s.state === 'unknown') ? 'Asleep' : (s.state === 'on' ? 'Locked' : 'Unlocked');
+              ]]]
+            state:
+              - value: "on"
+                icon: mdi:lock
+              - value: "off"
+                icon: mdi:lock-open-variant
+              - value: unavailable
+                icon: mdi:lock
+                styles:
+                  icon:
+                    - color: "#BDBDBD"
+
+  # ===========================================================================
+  # Schedule — the Worx app's Schedule screen (schedule editor + quick actions)
+  # ===========================================================================
+  - title: Schedule
+    path: schedule
+    icon: mdi:calendar-month
+    theme: worx
+    type: masonry
+    cards:
+      - type: entities
+        title: Up next
+        entities:
+          - entity: sensor.my_landroid_next_schedule
+            name: Next scheduled start
+            icon: mdi:calendar-clock
+          - entity: sensor.my_landroid_daily_progress
+            name: Today's progress
+            icon: mdi:progress-clock
+
+      # Quick actions (same tiles as the Home view, 3 columns).
+      - type: grid
+        columns: 3
+        square: false
+        cards:
+          - type: custom:button-card
+            template: worx_tile
+            name: Edge routine
+            icon: mdi:grass
+            entity: lawn_mower.my_landroid
+            show_label: true
+            label: |
+              [[[
+                return states['lawn_mower.my_landroid'] ? (states['lawn_mower.my_landroid'].state === 'unavailable' ? 'Asleep' : 'Tap to run') : 'Tap to run';
+              ]]]
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.my_landroid_edge_cut
+            styles:
+              icon:
+                - color: "#FF8200"
+            state:
+              - value: unavailable
+                styles:
+                  icon:
+                    - color: "#BDBDBD"
+
+          - type: custom:button-card
+            template: worx_tile
+            name: One Time
+            icon: mdi:calendar-clock
+            entity: lawn_mower.my_landroid
+            show_label: true
+            label: |
+              [[[
+                const mower = states['lawn_mower.my_landroid'];
+                const mins = states['input_number.landroid_ots_minutes'];
+                if (!mower || mower.state === 'unavailable') return 'Asleep';
+                return mins ? Math.round(parseFloat(mins.state)) + ' min' : '';
+              ]]]
+            tap_action:
+              action: perform-action
+              perform_action: script.landroid_ots
+            hold_action:
+              action: more-info
+              entity: input_number.landroid_ots_minutes
+            styles:
+              icon:
+                - color: "#FF8200"
+            state:
+              - value: unavailable
+                styles:
+                  icon:
+                    - color: "#BDBDBD"
+
+          - type: custom:button-card
+            template: worx_tile
+            entity: switch.my_landroid_party_mode
+            name: Party Mode
+            icon: mdi:party-popper
+            show_label: true
+            label: |
+              [[[
+                const s = states['switch.my_landroid_party_mode'];
+                return (!s || s.state === 'unavailable' || s.state === 'unknown') ? 'Asleep' : (s.state === 'on' ? 'On' : 'Off');
+              ]]]
+            state:
+              - value: "on"
+                styles:
+                  icon:
+                    - color: "#FF8200"
+                  label:
+                    - color: "#FF8200"
+              - value: unavailable
+                styles:
+                  icon:
+                    - color: "#BDBDBD"
+
+      # Weekly grid. Reads the normalized `schedule_entries` attribute from the
+      # next-schedule sensor (day / start / duration / boundary=edge flag).
+      # Hidden entirely while the sensor is unavailable (mower asleep) so no
+      # raw error data shows.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: sensor.my_landroid_next_schedule
+            state_not: unavailable
+          - condition: state
+            entity: sensor.my_landroid_next_schedule
+            state_not: unknown
+        card:
+          type: custom:flex-table-card
+          title: Weekly schedule
+          entities:
+            include:
+              - sensor.my_landroid_next_schedule
+          strict: false
+          columns:
+            - data: schedule_entries.day
+              name: Day
+              modify: 'x ? x.charAt(0).toUpperCase() + x.slice(1) : x'
+            - data: schedule_entries.start
+              name: Start
+            - data: schedule_entries.duration
+              name: Duration
+              suffix: " min"
+            - data: schedule_entries.boundary
+              name: Edge
+              modify: 'x ? "✓" : "–"'
+
+      # =========================================================================
+      # Schedule editor — add, edit and delete weekly schedule entries.
+      #
+      # Writes go through the landroid_cloud v7 actions (add_schedule /
+      # edit_schedule / delete_schedule) and the scripts in
+      # snippets/scripts-additions.yaml. The whole editor hides while the
+      # mower sleeps: the cloud refuses schedule writes while the mower is
+      # offline, so nothing is left tappable-but-doomed.
+      # =========================================================================
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: sensor.my_landroid_next_schedule
+            state_not: unavailable
+          - condition: state
+            entity: sensor.my_landroid_next_schedule
+            state_not: unknown
+        card:
+          type: vertical-stack
+          cards:
+            - type: entities
+              title: Schedule editor
+              entities:
+                - entity: input_select.landroid_sched_day
+                  name: Day
+                - entity: input_datetime.landroid_sched_start
+                  name: Start
+                - entity: input_number.landroid_sched_duration
+                  name: Duration
+                - entity: input_boolean.landroid_sched_boundary
+                  name: Edge cut
+                - entity: input_boolean.landroid_sched_all_days
+                  name: Repeat every day
+
+            # "Editing ..." indicator — shown while a slot is loaded.
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: input_text.landroid_sched_edit_day
+                  state_not: ""
+              card:
+                type: markdown
+                content: >-
+                  Editing **{{ states('input_text.landroid_sched_edit_day') | capitalize }}
+                  {{ states('input_text.landroid_sched_edit_start') }}** – adjust the
+                  fields above, then tap the orange **Save changes** button
+                  (or Cancel to discard).
+
+            # Action row, mode-swapped in the same spot: while you are NOT
+            # editing it shows Add + Clear week; while a slot is loaded for
+            # editing it is replaced by a full-width orange Save changes with
+            # a slim Cancel under it — the save action is impossible to miss
+            # and Add is hidden so a mid-edit Add can't fire by accident.
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: input_text.landroid_sched_edit_day
+                  state: ""
+              card:
+                type: grid
+                columns: 2
+                square: false
+                cards:
+                  - type: custom:button-card
+                    template: worx_tile
+                    name: Add
+                    icon: mdi:plus
+                    tap_action:
+                      action: perform-action
+                      perform_action: script.landroid_schedule_add
+                    styles:
+                      icon:
+                        - color: "#FF8200"
+
+                  - type: custom:button-card
+                    template: worx_tile
+                    name: Clear week
+                    icon: mdi:calendar-remove
+                    tap_action:
+                      action: perform-action
+                      perform_action: landroid_cloud.delete_schedule
+                      target:
+                        entity_id: lawn_mower.my_landroid
+                      data:
+                        all_schedules: true
+                      confirmation:
+                        text: >-
+                          Delete every schedule entry for the whole week? This
+                          cannot be undone from the dashboard.
+                    styles:
+                      icon:
+                        - color: "#D32F2F"
+
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: input_text.landroid_sched_edit_day
+                  state_not: ""
+              card:
+                type: grid
+                columns: 1
+                square: false
+                cards:
+                  - type: custom:button-card
+                    name: Save changes
+                    icon: mdi:content-save
+                    aspect_ratio: 3/1
+                    styles:
+                      card:
+                        - border-radius: 16px
+                        - background-color: "#FF8200"
+                        - box-shadow: 0px 2px 8px rgba(255, 130, 0, 0.35)
+                      icon:
+                        - color: "#FFFFFF"
+                        - width: 26px
+                      name:
+                        - color: "#FFFFFF"
+                        - font-size: 16px
+                        - font-weight: 700
+                    tap_action:
+                      action: perform-action
+                      perform_action: script.landroid_schedule_save_edit
+
+                  - type: custom:button-card
+                    name: Cancel
+                    icon: mdi:close
+                    aspect_ratio: 4/1
+                    styles:
+                      card:
+                        - border-radius: 16px
+                        - background-color: "#FFFFFF"
+                        - border: 2px solid "#FF8200"
+                      icon:
+                        - color: "#FF8200"
+                        - width: 22px
+                      name:
+                        - color: "#FF8200"
+                        - font-size: 13px
+                        - font-weight: 600
+                    tap_action:
+                      action: perform-action
+                      perform_action: script.landroid_schedule_cancel_edit
+
+            # Per-slot tiles, generated from the same schedule_entries
+            # attribute the table above displays: tap loads the slot into the
+            # editor (script.landroid_schedule_pickup), hold deletes it behind
+            # a confirmation dialog. Hold goes through
+            # script.landroid_schedule_delete (not the integration action
+            # directly) because the integration cannot pick between exact
+            # duplicates (same day+start) — the script rebuilds the week
+            # without one copy in that case. card_param: cards makes
+            # auto-entities put the generated tiles INTO the grid instead of
+            # next to it.
+            #
+            # The template MUST evaluate to a list of card-config dicts (the
+            # final `{{ ns.tiles }}`). auto-entities 1.16+ takes template
+            # results literally: a text/YAML result gets split on whitespace
+            # into junk entities (one "Configuration error" tile per fragment).
+            # A native list arrives intact via the render_template websocket.
+            - type: markdown
+              content: >-
+                **Your slots** – tap a slot to edit it, hold to delete it.
+            - type: custom:auto-entities
+              show_empty: false
+              card_param: cards
+              card:
+                type: grid
+                columns: 2
+                square: false
+              filter:
+                template: |
+                  {% set entries = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+                  {% set ns = namespace(tiles = []) %}
+                  {% for e in entries %}
+                  {% set ns.tiles = ns.tiles + [
+                    {
+                      'type': 'custom:button-card',
+                      'template': 'worx_tile',
+                      'name': (e.day | capitalize) ~ ' ' ~ e.start,
+                      'icon': 'mdi:grass' if e.boundary else 'mdi:robot-mower',
+                      'show_label': true,
+                      'label': e.duration ~ ' min' ~ (' · Edge' if e.boundary else ''),
+                      'tap_action': {
+                        'action': 'perform-action',
+                        'perform_action': 'script.landroid_schedule_pickup',
+                        'data': {'day': e.day, 'start': e.start, 'duration': e.duration, 'boundary': e.boundary},
+                      },
+                      'hold_action': {
+                        'action': 'perform-action',
+                        'perform_action': 'script.landroid_schedule_delete',
+                        'data': {'day': e.day, 'start': e.start},
+                        'confirmation': {'text': 'Delete ' ~ (e.day | capitalize) ~ ' ' ~ e.start ~ ', ' ~ e.duration ~ ' min?'},
+                      },
+                    }
+                  ] %}
+                  {% endfor %}
+                  {{ ns.tiles }}
+
+      # Editor fallback while the mower sleeps (two cards because conditional
+      # conditions AND together — unavailable and unknown are OR cases).
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: sensor.my_landroid_next_schedule
+            state: unavailable
+        card:
+          type: markdown
+          content: >-
+            **Schedule editor unavailable** – the mower is asleep and the cloud
+            refuses schedule writes while it is offline. Wake it (for example
+            with a Start command from the app) and the editor returns.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: sensor.my_landroid_next_schedule
+            state: unknown
+        card:
+          type: markdown
+          content: >-
+            **Schedule editor unavailable** – waiting for the mower's first
+            schedule sync. The editor returns once the mower is awake.

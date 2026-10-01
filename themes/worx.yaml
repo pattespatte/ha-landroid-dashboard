@@ -1,0 +1,68 @@
+# Worx (Landroid app) theme for the Landroid dashboard.
+# Deploy to: /config/themes/worx.yaml
+# Registers as theme name "worx"; applied per view in lovelace-landroid.yaml
+# via `theme: worx` so only the Landroid dashboard changes look.
+#
+# Palette captured from the Worx app (Play Store screenshots, 2026-09):
+# cream background, white rounded cards, orange accents, dark grey text.
+worx:
+  # Primary / accent
+  primary-color: "#FF8200"
+  light-primary-color: "#FFAA4D"
+  dark-primary-color: "#E67300"
+  accent-color: "#FF8200"
+
+  # Backgrounds
+  primary-background-color: "#F4ECE1"
+  secondary-background-color: "#EFE5D8"
+  app-header-background-color: "#F4ECE1"
+  app-header-text-color: "#3B3B3B"
+
+  # Cards
+  card-background-color: "#FFFFFF"
+  ha-card-background: "#FFFFFF"
+  ha-card-border-radius: "16px"
+  ha-card-box-shadow: 0px 2px 6px rgba(59, 59, 59, 0.08)
+  paper-card-background-color: "#FFFFFF"
+  paper-dialog-background-color: "#FFFFFF"
+
+  # Text
+  primary-text-color: "#3B3B3B"
+  secondary-text-color: "#8A8A8A"
+  text-primary-color: "#FFFFFF"
+  disabled-text-color: "#BDBDBD"
+
+  # Lines and dividers
+  divider-color: "#EEE3D6"
+  paper-listbox-background-color: "#FFFFFF"
+
+  # Icons
+  state-icon-color: "#8A8A8A"
+  state-icon-active-color: "#FF8200"
+  paper-item-icon-color: "#8A8A8A"
+  paper-item-icon-active-color: "#FF8200"
+
+  # Controls
+  switch-checked-color: "#FF8200"
+  switch-checked-button-color: "#FFFFFF"
+  switch-checked-track-color: "#FF8200"
+  slider-primary-color: "#FF8200"
+  paper-slider-active-color: "#FF8200"
+  paper-slider-knob-color: "#FF8200"
+  paper-toggle-button-checked-button-color: "#FFFFFF"
+  paper-toggle-button-checked-bar-color: "#FF8200"
+
+  # Badges and chips
+  label-badge-background-color: "#FFFFFF"
+  label-badge-text-color: "#3B3B3B"
+  label-badge-red: "#FF8200"
+
+  # Tables (flex-table-card)
+  table-row-background-color: "#FFFFFF"
+  table-row-alternative-background-color: "#FAF6EF"
+
+  # Semantic colors kept at defaults so real errors still read as errors
+  error-color: "#DB4437"
+  warning-color: "#FF9800"
+  success-color: "#43A047"
+  info-color: "#039BE5"

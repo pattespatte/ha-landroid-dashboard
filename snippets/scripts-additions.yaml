@@ -1,0 +1,385 @@
+# =============================================================================
+# Landroid dashboard additions for /config/scripts.yaml
+#
+# Paste ALL SEVEN blocks below at the TOP LEVEL of scripts.yaml
+# (new map keys next to the existing entries).
+#
+# They call the landroid_cloud v7 schedule actions (add_schedule /
+# edit_schedule / delete_schedule / ots) and read/write the schedule editor
+# helpers from the input_* snippets in this repo. All of them only take
+# effect while the mower is awake/online – the cloud refuses schedule
+# writes while a docked Landroid sleeps its WiFi.
+#
+# landroid_schedule_dedupe_all is a REPAIR TOOL, not part of the dashboard
+# UI: if exact duplicate slots ever appear (same day + start time), run it
+# manually from Developer Tools -> Actions. Safe to run repeatedly.
+# =============================================================================
+
+landroid_ots:
+  alias: Landroid One Time Schedule
+  description: >-
+    Starts a one-time mowing session (One Time Schedule) on the Landroid for
+    the duration currently set on the "My Landroid one-time mow" slider
+    (10-120 minutes, no edge pass). Only takes effect while the mower is
+    awake/online.
+  mode: single
+  sequence:
+  - action: landroid_cloud.ots
+    target:
+      entity_id: lawn_mower.my_landroid
+    data:
+      runtime: "{{ states('input_number.landroid_ots_minutes') | int(60) }}"
+      boundary: false
+  icon: mdi:clock-start
+
+# -----------------------------------------------------------------------------
+# Schedule editor scripts (Schedule view). They call the landroid_cloud v7
+# schedule actions (add_schedule / edit_schedule) and read the schedule editor
+# helpers from snippets/input_*-additions.yaml. All of them only take effect
+# while the mower is awake/online – the cloud refuses schedule writes while a
+# docked Landroid sleeps its WiFi.
+# -----------------------------------------------------------------------------
+
+landroid_schedule_pickup:
+  alias: Landroid schedule – load entry into editor
+  description: >-
+    Loads an existing schedule entry into the schedule editor helpers so it
+    can be edited. Called by the per-slot tiles on the Landroid dashboard's
+    Schedule view (tap a slot). The day and start of the entry being edited
+    are stored in the input_text edit-target helpers read by
+    script.landroid_schedule_save_edit.
+  mode: single
+  sequence:
+    - action: input_select.select_option
+      target:
+        entity_id: input_select.landroid_sched_day
+      data:
+        option: "{{ day | capitalize }}"
+    - action: input_datetime.set_datetime
+      target:
+        entity_id: input_datetime.landroid_sched_start
+      data:
+        time: "{{ start }}"
+    - action: input_number.set_value
+      target:
+        entity_id: input_number.landroid_sched_duration
+      data:
+        value: "{{ duration | int(60) }}"
+    - if:
+        - condition: template
+          value_template: "{{ boundary | default(false) | bool }}"
+      then:
+        - action: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.landroid_sched_boundary
+      else:
+        - action: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.landroid_sched_boundary
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.landroid_sched_edit_day
+      data:
+        value: "{{ day | lower }}"
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.landroid_sched_edit_start
+      data:
+        value: "{{ start }}"
+  fields:
+    day:
+      name: Day
+      description: Lowercase day name of the entry to edit (monday-sunday)
+      required: true
+      example: monday
+      selector:
+        select:
+          options:
+            - monday
+            - tuesday
+            - wednesday
+            - thursday
+            - friday
+            - saturday
+            - sunday
+    start:
+      name: Start
+      description: Start time of the entry to edit (HH:MM)
+      required: true
+      example: "09:00"
+      selector:
+        text: {}
+    duration:
+      name: Duration
+      description: Duration of the entry to edit, in minutes
+      required: true
+      example: 120
+      selector:
+        number:
+          min: 0
+          max: 1440
+          step: 1
+          unit_of_measurement: minutes
+          mode: box
+    boundary:
+      name: Boundary
+      description: Whether the entry has the edge-cut flag set
+      required: true
+      example: false
+      selector:
+        boolean: {}
+
+landroid_schedule_add:
+  alias: Landroid schedule – add entry
+  description: >-
+    Adds a schedule entry built from the schedule editor helpers on the
+    Landroid dashboard's Schedule view: the selected day (or every day when
+    "Repeat every day" is on), start time, duration and edge-cut flag.
+    Refuses to create an exact duplicate (a slot with the same day and start
+    time) – the mower cannot tell duplicates apart, which makes them
+    impossible to delete individually. Requires the mower to be awake/online.
+  mode: single
+  sequence:
+    - variables:
+        sched_days: >-
+          {{ ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
+             if is_state('input_boolean.landroid_sched_all_days', 'on')
+             else [states('input_select.landroid_sched_day') | lower] }}
+        sched_start: "{{ states('input_datetime.landroid_sched_start')[:5] }}"
+        clash_days: >-
+          {{ (state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [])
+             | selectattr('day', 'in', sched_days)
+             | selectattr('start', 'equalto', sched_start)
+             | map(attribute='day') | list }}
+    - if:
+        - condition: template
+          value_template: "{{ clash_days | length > 0 }}"
+      then:
+        - stop: >-
+            {{ clash_days | map('capitalize') | join(', ') }} already has a slot
+            at {{ sched_start }} – edit the existing slot instead. The mower
+            can't tell exact duplicates apart, so adding one would make both
+            impossible to delete individually.
+          error: true
+    - action: landroid_cloud.add_schedule
+      target:
+        entity_id: lawn_mower.my_landroid
+      data:
+        days: "{{ sched_days }}"
+        start: "{{ sched_start }}"
+        duration: "{{ states('input_number.landroid_sched_duration') | int(60) }}"
+        boundary: "{{ is_state('input_boolean.landroid_sched_boundary', 'on') }}"
+
+landroid_schedule_save_edit:
+  alias: Landroid schedule – save edited entry
+  description: >-
+    Applies the schedule editor helpers to the entry currently loaded for
+    editing (recorded by script.landroid_schedule_pickup in the edit-target
+    helpers), then clears the edit target. Changing the Day field moves the
+    entry to another weekday. Requires the mower to be awake/online.
+  mode: single
+  sequence:
+    - if:
+        - condition: template
+          value_template: >-
+            {{ states('input_text.landroid_sched_edit_day') not in ['', 'unknown', 'unavailable']
+               and states('input_text.landroid_sched_edit_start') not in ['', 'unknown', 'unavailable'] }}
+      then:
+        - action: landroid_cloud.edit_schedule
+          target:
+            entity_id: lawn_mower.my_landroid
+          data:
+            current_day: "{{ states('input_text.landroid_sched_edit_day') }}"
+            current_start: "{{ states('input_text.landroid_sched_edit_start') }}"
+            day: "{{ states('input_select.landroid_sched_day') | lower }}"
+            start: "{{ states('input_datetime.landroid_sched_start')[:5] }}"
+            duration: "{{ states('input_number.landroid_sched_duration') | int(60) }}"
+            boundary: "{{ is_state('input_boolean.landroid_sched_boundary', 'on') }}"
+        - action: input_text.set_value
+          target:
+            entity_id: input_text.landroid_sched_edit_day
+          data:
+            value: ""
+        - action: input_text.set_value
+          target:
+            entity_id: input_text.landroid_sched_edit_start
+          data:
+            value: ""
+
+landroid_schedule_cancel_edit:
+  alias: Landroid schedule – cancel editing
+  description: >-
+    Discards the edit target set by script.landroid_schedule_pickup without
+    changing anything on the mower.
+  mode: single
+  sequence:
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.landroid_sched_edit_day
+      data:
+        value: ""
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.landroid_sched_edit_start
+      data:
+        value: ""
+landroid_schedule_delete:
+  alias: Landroid schedule – delete entry
+  description: >-
+    Deletes one weekly schedule entry. When the day+start time is unique it
+    goes straight to landroid_cloud.delete_schedule. When several identical
+    entries share the day+start (the integration refuses to pick one, so a
+    direct delete errors out), the week is rebuilt instead: everything is
+    cleared, then every entry except one copy of the selected slot is
+    re-added. Called by the hold action of the per-slot tiles on the Landroid
+    dashboard's Schedule view. Requires the mower to be awake/online.
+  mode: single
+  sequence:
+    - variables:
+        entries: >-
+          {{ state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] }}
+        matching: >-
+          {{ entries | selectattr('day', 'equalto', day) | selectattr('start', 'equalto', start) | list }}
+    - choose:
+        # Unique (or already gone) – the integration can address it directly.
+        - conditions:
+            - condition: template
+              value_template: "{{ matching | length <= 1 }}"
+          sequence:
+            - action: landroid_cloud.delete_schedule
+              target:
+                entity_id: lawn_mower.my_landroid
+              data:
+                day: "{{ day }}"
+                start: "{{ start }}"
+      # Exact duplicates – drop one copy by clearing the week and re-adding
+      # everything else. The variables template drops the FIRST match and
+      # keeps the rest (native list via the final expression).
+      default:
+        - variables:
+            keep: |
+              {% set ns = namespace(keep=[], dropped=false) %}
+              {% for e in entries %}
+              {% if (not ns.dropped) and e.day == day and e.start == start %}
+              {% set ns.dropped = true %}
+              {% else %}
+              {% set ns.keep = ns.keep + [e] %}
+              {% endif %}
+              {% endfor %}
+              {{ ns.keep }}
+        - action: landroid_cloud.delete_schedule
+          target:
+            entity_id: lawn_mower.my_landroid
+          data:
+            all_schedules: true
+        - repeat:
+            for_each: "{{ keep }}"
+            sequence:
+              - action: landroid_cloud.add_schedule
+                target:
+                  entity_id: lawn_mower.my_landroid
+                data:
+                  days: ["{{ item.day }}"]
+                  start: "{{ item.start }}"
+                  duration: "{{ item.duration | int(0) }}"
+                  boundary: "{{ item.boundary | default(false) | bool }}"
+  fields:
+    day:
+      name: Day
+      description: Lowercase day name of the entry to delete (monday-sunday)
+      required: true
+      example: monday
+      selector:
+        select:
+          options:
+            - monday
+            - tuesday
+            - wednesday
+            - thursday
+            - friday
+            - saturday
+            - sunday
+    start:
+      name: Start
+      description: Start time of the entry to delete (HH:MM)
+      required: true
+      example: "09:00"
+      selector:
+        text: {}
+
+
+landroid_schedule_dedupe_all:
+  alias: Landroid schedule – remove duplicate slots
+  description: >-
+    Repair tool: removes extra copies of schedule entries that share the same
+    day and start time (exact duplicates the mower cannot address
+    individually). Keeps the first copy of each duplicated slot, clears the
+    week and re-adds the remaining entries, then reports what it did as a
+    persistent notification. Safe to run repeatedly; does nothing when the
+    schedule has no duplicates.
+  mode: single
+  sequence:
+    - if:
+        - condition: template
+          value_template: >-
+            {{ states('sensor.my_landroid_next_schedule') in ['unknown', 'unavailable', 'none'] }}
+      then:
+        - action: persistent_notification.create
+          data:
+            title: Landroid schedule
+            message: >-
+              Duplicate-slot cleanup skipped – the mower is asleep and the
+              cloud refuses schedule writes while it is offline. It retries
+              automatically the next time the mower wakes.
+            notification_id: landroid_dedupe
+      else:
+        - variables:
+            entries: >-
+              {{ state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] }}
+            parsed: |
+              {% set ns = namespace(keep=[], seen=[], removed=[]) %}
+              {% for e in entries %}
+              {% set key = e.day ~ ' ' ~ e.start %}
+              {% if key in ns.seen %}
+              {% set ns.removed = ns.removed + [key] %}
+              {% else %}
+              {% set ns.keep = ns.keep + [e] %}
+              {% set ns.seen = ns.seen + [key] %}
+              {% endif %}
+              {% endfor %}
+              {{ {'keep': ns.keep, 'removed': ns.removed} }}
+        - if:
+            - condition: template
+              value_template: "{{ parsed.removed | length == 0 }}"
+          then:
+            - action: persistent_notification.create
+              data:
+                title: Landroid schedule
+                message: No duplicate schedule slots found – nothing changed.
+                notification_id: landroid_dedupe
+          else:
+            - action: landroid_cloud.delete_schedule
+              target:
+                entity_id: lawn_mower.my_landroid
+              data:
+                all_schedules: true
+            - repeat:
+                for_each: "{{ parsed.keep }}"
+                sequence:
+                  - action: landroid_cloud.add_schedule
+                    target:
+                      entity_id: lawn_mower.my_landroid
+                    data:
+                      days: ["{{ item.day }}"]
+                      start: "{{ item.start }}"
+                      duration: "{{ item.duration | int(0) }}"
+                      boundary: "{{ item.boundary | default(false) | bool }}"
+            - action: persistent_notification.create
+              data:
+                title: Landroid schedule – duplicates removed
+                message: >-
+                  Removed {{ parsed.removed | unique | list | length }} duplicate
+                  slot(s): {{ parsed.removed | unique | list | join(', ') }}.
+                  Every other slot was written back unchanged – check the
+                  Schedule view.
+                notification_id: landroid_dedupe

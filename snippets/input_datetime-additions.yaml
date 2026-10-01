@@ -1,0 +1,14 @@
+# =============================================================================
+# Landroid dashboard addition for /config/input_datetime.yaml
+#
+# Paste the block below at the TOP LEVEL of input_datetime.yaml
+# (a new map key next to the existing entries).
+# =============================================================================
+
+# Schedule editor: start time of the entry being added or edited.
+landroid_sched_start:
+  name: "Landroid schedule start"
+  has_date: false
+  has_time: true
+  initial: "09:00"
+  icon: mdi:clock-outline

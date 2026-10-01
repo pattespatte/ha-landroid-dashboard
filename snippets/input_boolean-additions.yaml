@@ -1,0 +1,16 @@
+# =============================================================================
+# Landroid dashboard additions for /config/input_boolean.yaml
+#
+# Paste BOTH blocks below at the TOP LEVEL of input_boolean.yaml
+# (new map keys next to the existing entries).
+# =============================================================================
+
+# Schedule editor: edge-cut flag for the entry being added or edited.
+landroid_sched_boundary:
+  name: "Landroid schedule edge cut"
+  icon: mdi:grass
+
+# Schedule editor: add the entry to all seven days in one go.
+landroid_sched_all_days:
+  name: "Landroid schedule repeat every day"
+  icon: mdi:calendar-repeat

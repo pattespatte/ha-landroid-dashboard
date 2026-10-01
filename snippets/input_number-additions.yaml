@@ -1,0 +1,29 @@
+# =============================================================================
+# Landroid dashboard additions for /config/input_number.yaml
+#
+# Paste BOTH blocks below at the TOP LEVEL of input_number.yaml
+# (new map keys next to the existing entries).
+# =============================================================================
+
+# One Time Schedule duration; feeds script.landroid_ots.
+# Range 10-120 min = the documented range of landroid_cloud.ots.
+landroid_ots_minutes:
+  name: "My Landroid one-time mow (minutes)"
+  min: 10
+  max: 120
+  step: 5
+  mode: slider
+  icon: mdi:clock-plus-outline
+
+# Schedule editor: entry duration in minutes. landroid_cloud.add_schedule
+# accepts 0-1440, but 0-duration entries are dropped by the integration's
+# schedule normalizer, so the floor is 10 min; 720 covers a 12 h slot.
+landroid_sched_duration:
+  name: "Landroid schedule duration (minutes)"
+  min: 10
+  max: 720
+  step: 5
+  initial: 60
+  unit_of_measurement: min
+  mode: slider
+  icon: mdi:timer

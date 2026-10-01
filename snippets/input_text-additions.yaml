@@ -1,0 +1,25 @@
+# =============================================================================
+# Landroid dashboard additions for /config/input_text.yaml
+#
+# Paste BOTH blocks below at the TOP LEVEL of input_text.yaml
+# (new map keys next to the existing entries).
+#
+# Edit-target helpers: while a slot is loaded for editing they hold the
+# original day/start of that slot (set by script.landroid_schedule_pickup,
+# consumed by script.landroid_schedule_save_edit). Empty strings = not
+# editing. min/max are required by HA even in text mode — keep them.
+# =============================================================================
+
+landroid_sched_edit_day:
+  name: "Landroid schedule edit day"
+  initial: ""
+  min: 0
+  max: 10
+  mode: text
+
+landroid_sched_edit_start:
+  name: "Landroid schedule edit start"
+  initial: ""
+  min: 0
+  max: 5
+  mode: text
