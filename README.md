@@ -4,7 +4,7 @@ A dedicated Home Assistant dashboard that imitates the Worx Landroid app – cre
 
 ![Landroid dashboard](docs/screenshot.png)
 
-Everything ships as plain YAML you copy or paste into an existing Home Assistant configuration – no HACS package, no install script.
+Everything ships as plain YAML you copy or paste into an existing Home Assistant configuration – no install script. The theme is the one piece HACS can manage for you (HACS has no dashboard category); the rest stays copy/paste.
 
 ## What you get
 
@@ -26,6 +26,10 @@ Everything ships as plain YAML you copy or paste into an existing Home Assistant
 | `custom:auto-entities` | [thomasloven/lovelace-auto-entities](https://github.com/thomasloven/lovelace-auto-entities) 1.16+ |
 
 Add each repository in HACS, download it, and register the resource URLs under Settings → Dashboards → Resources if your HACS does not do that automatically.
+
+### Theme via HACS (optional)
+
+Instead of copying `themes/worx.yaml` by hand, you can let HACS install and update it: HACS → ⋮ menu (top right) → Custom repositories → paste `pattespatte/ha-landroid-dashboard` → category **Theme** → Add, then find "Landroid dashboard (Worx theme)" in HACS and download it. The file lands in `/config/themes/worx.yaml` – the same place the manual copy goes.
 
 ## Install
 
@@ -80,7 +84,7 @@ If Auto Schedule previously generated the week, "Clear week" on the Schedule vie
 
 | File in this repo | Deploy target |
 |---|---|
-| `themes/worx.yaml` | copy to `/config/themes/worx.yaml` (create the `themes/` folder if none exists) |
+| `themes/worx.yaml` | already in place if you installed the theme through HACS (see Prerequisites); otherwise copy to `/config/themes/worx.yaml` (create the `themes/` folder if none exists) |
 | `lovelace-landroid.yaml` | copy to `/config/lovelace-landroid.yaml` |
 | `snippets/configuration-additions.yaml` | paste both blocks at the top level of `/config/configuration.yaml` |
 | `snippets/input_number-additions.yaml` | paste both blocks into `/config/input_number.yaml` |
