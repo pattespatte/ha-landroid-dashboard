@@ -176,7 +176,13 @@ landroid_schedule_save_edit:
     Applies the schedule editor helpers to the entry currently loaded for
     editing (recorded by script.landroid_schedule_pickup in the edit-target
     helpers), then clears the edit target. Changing the Day field moves the
-    entry to another weekday. Requires the mower to be awake/online.
+    entry to another weekday. Before writing it re-checks the edit target
+    against the mower's current schedule: the slot tiles are rendered from
+    the next-schedule sensor, which can lag behind the mower after a
+    schedule change, so a tapped tile can reference a slot that no longer
+    exists – the integration would reject that with a cryptic error, so the
+    script stops first with instructions instead. Requires the mower to be
+    awake/online.
   mode: single
   sequence:
     - if:
@@ -185,12 +191,50 @@ landroid_schedule_save_edit:
             {{ states('input_text.landroid_sched_edit_day') not in ['', 'unknown', 'unavailable']
                and states('input_text.landroid_sched_edit_start') not in ['', 'unknown', 'unavailable'] }}
       then:
+        - if:
+            - condition: template
+              value_template: >-
+                {{ states('sensor.my_landroid_next_schedule') in ['unknown', 'unavailable', 'none'] }}
+          then:
+            - stop: >-
+                The mower is asleep – the cloud refuses schedule writes while
+                it is offline, so nothing was changed. Wake it (for example
+                with a Start command from the Worx app) and try again.
+              error: true
+        - variables:
+            edit_day: "{{ states('input_text.landroid_sched_edit_day') }}"
+            edit_start: "{{ states('input_text.landroid_sched_edit_start') }}"
+            target_matches: >-
+              {{ (state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [])
+                 | selectattr('day', 'equalto', edit_day)
+                 | selectattr('start', 'equalto', edit_start)
+                 | list }}
+        - if:
+            - condition: template
+              value_template: "{{ target_matches | length == 0 }}"
+          then:
+            - stop: >-
+                {{ edit_day | capitalize }} {{ edit_start }} is no longer on the
+                mower – it was changed or deleted after you started editing
+                (the slot list can lag behind the mower). Nothing was saved.
+                Tap Cancel, then tap the slot again from the refreshed list.
+              error: true
+        - if:
+            - condition: template
+              value_template: "{{ target_matches | length > 1 }}"
+          then:
+            - stop: >-
+                {{ edit_day | capitalize }} {{ edit_start }} exists more than once
+                on the mower, so the edit cannot tell which copy to change.
+                Run the repair tool once (Developer Tools → Actions →
+                script.landroid_schedule_dedupe_all), then edit the slot again.
+              error: true
         - action: landroid_cloud.edit_schedule
           target:
             entity_id: lawn_mower.my_landroid
           data:
-            current_day: "{{ states('input_text.landroid_sched_edit_day') }}"
-            current_start: "{{ states('input_text.landroid_sched_edit_start') }}"
+            current_day: "{{ edit_day }}"
+            current_start: "{{ edit_start }}"
             day: "{{ states('input_select.landroid_sched_day') | lower }}"
             start: "{{ states('input_datetime.landroid_sched_start')[:5] }}"
             duration: "{{ states('input_number.landroid_sched_duration') | int(60) }}"
