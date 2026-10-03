@@ -231,10 +231,23 @@ landroid_schedule_delete:
     entries share the day+start (the integration refuses to pick one, so a
     direct delete errors out), the week is rebuilt instead: everything is
     cleared, then every entry except one copy of the selected slot is
-    re-added. Called by the hold action of the per-slot tiles on the Landroid
-    dashboard's Schedule view. Requires the mower to be awake/online.
+    re-added. The rebuild is verified against the mower and retried once if
+    the mower slept mid-write; anything still missing is reported as a
+    persistent notification so it can be re-added by hand. Called by the
+    hold action of the per-slot tiles on the Landroid dashboard's Schedule
+    view. Requires the mower to be awake/online.
   mode: single
   sequence:
+    - if:
+        - condition: template
+          value_template: >-
+            {{ states('sensor.my_landroid_next_schedule') in ['unknown', 'unavailable', 'none'] }}
+      then:
+        - stop: >-
+            The mower is asleep – the cloud refuses schedule writes while it
+            is offline, so nothing was changed. Wake it (for example with a
+            Start command from the Worx app) and try again.
+          error: true
     - variables:
         entries: >-
           {{ state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] }}
@@ -255,6 +268,13 @@ landroid_schedule_delete:
       # Exact duplicates – drop one copy by clearing the week and re-adding
       # everything else. The variables template drops the FIRST match and
       # keeps the rest (native list via the final expression).
+      #
+      # IMPORTANT: the re-add loop MUST use repeat.item (not bare item) –
+      # bare item inside repeat was removed in Home Assistant's
+      # script-variable scoping rewrite, and using it crashed the first
+      # re-add AFTER the week was already cleared, wiping the whole
+      # schedule. The loop also paces the cloud writes, then verifies,
+      # retries and reports the result.
       default:
         - variables:
             keep: |
@@ -275,14 +295,79 @@ landroid_schedule_delete:
         - repeat:
             for_each: "{{ keep }}"
             sequence:
+              - delay:
+                  seconds: 2
               - action: landroid_cloud.add_schedule
                 target:
                   entity_id: lawn_mower.my_landroid
                 data:
-                  days: ["{{ item.day }}"]
-                  start: "{{ item.start }}"
-                  duration: "{{ item.duration | int(0) }}"
-                  boundary: "{{ item.boundary | default(false) | bool }}"
+                  days: ["{{ repeat.item.day }}"]
+                  start: "{{ repeat.item.start }}"
+                  duration: "{{ repeat.item.duration | int(0) }}"
+                  boundary: "{{ repeat.item.boundary | default(false) | bool }}"
+        - delay:
+            seconds: 8
+        - variables:
+            missing: |
+              {% set written = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+              {% set ns = namespace(keys=[], missing=[]) %}
+              {% for w in written %}
+              {% set ns.keys = ns.keys + [w.day ~ ' ' ~ w.start] %}
+              {% endfor %}
+              {% for e in keep %}
+              {% if (e.day ~ ' ' ~ e.start) not in ns.keys %}
+              {% set ns.missing = ns.missing + [e] %}
+              {% endif %}
+              {% endfor %}
+              {{ ns.missing }}
+        - if:
+            - condition: template
+              value_template: "{{ missing | length > 0 }}"
+          then:
+            - repeat:
+                for_each: "{{ missing }}"
+                sequence:
+                  - delay:
+                      seconds: 3
+                  - action: landroid_cloud.add_schedule
+                    target:
+                      entity_id: lawn_mower.my_landroid
+                    data:
+                      days: ["{{ repeat.item.day }}"]
+                      start: "{{ repeat.item.start }}"
+                      duration: "{{ repeat.item.duration | int(0) }}"
+                      boundary: "{{ repeat.item.boundary | default(false) | bool }}"
+                    continue_on_error: true
+            - delay:
+                seconds: 8
+            - variables:
+                still_missing: |
+                  {% set written = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+                  {% set ns = namespace(keys=[], missing=[]) %}
+                  {% for w in written %}
+                  {% set ns.keys = ns.keys + [w.day ~ ' ' ~ w.start] %}
+                  {% endfor %}
+                  {% for e in keep %}
+                  {% if (e.day ~ ' ' ~ e.start) not in ns.keys %}
+                  {% set ns.missing = ns.missing + [e] %}
+                  {% endif %}
+                  {% endfor %}
+                  {{ ns.missing }}
+            - if:
+                - condition: template
+                  value_template: "{{ still_missing | length > 0 }}"
+              then:
+                - action: persistent_notification.create
+                  data:
+                    title: Landroid schedule – rebuild incomplete
+                    message: >-
+                      Deleted {{ day | capitalize }} {{ start }}, but these slots
+                      could not be written back to the mower (it probably went
+                      back to sleep mid-write):
+                      {% for e in still_missing %}{{ e.day | capitalize }} {{ e.start }}
+                      ({{ e.duration | int(0) }} min{% if e.boundary | default(false) | bool %}, edge cut{% endif %}){{ ", " if not loop.last }}{% endfor %}.
+                      Re-add them from the Schedule view once the mower is awake.
+                    notification_id: landroid_schedule_rebuild
   fields:
     day:
       name: Day
@@ -363,23 +448,69 @@ landroid_schedule_dedupe_all:
                 entity_id: lawn_mower.my_landroid
               data:
                 all_schedules: true
+            # repeat.item (not bare item) – bare item was removed in HA's
+            # script-variable scoping rewrite and crashed the first re-add.
             - repeat:
                 for_each: "{{ parsed.keep }}"
                 sequence:
+                  - delay:
+                      seconds: 2
                   - action: landroid_cloud.add_schedule
                     target:
                       entity_id: lawn_mower.my_landroid
                     data:
-                      days: ["{{ item.day }}"]
-                      start: "{{ item.start }}"
-                      duration: "{{ item.duration | int(0) }}"
-                      boundary: "{{ item.boundary | default(false) | bool }}"
+                      days: ["{{ repeat.item.day }}"]
+                      start: "{{ repeat.item.start }}"
+                      duration: "{{ repeat.item.duration | int(0) }}"
+                      boundary: "{{ repeat.item.boundary | default(false) | bool }}"
+            - delay:
+                seconds: 8
+            - variables:
+                missing: |
+                  {% set written = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+                  {% set ns = namespace(keys=[], missing=[]) %}
+                  {% for w in written %}
+                  {% set ns.keys = ns.keys + [w.day ~ ' ' ~ w.start] %}
+                  {% endfor %}
+                  {% for e in parsed.keep %}
+                  {% if (e.day ~ ' ' ~ e.start) not in ns.keys %}
+                  {% set ns.missing = ns.missing + [e] %}
+                  {% endif %}
+                  {% endfor %}
+                  {{ ns.missing }}
+            - if:
+                - condition: template
+                  value_template: "{{ missing | length > 0 }}"
+              then:
+                - repeat:
+                    for_each: "{{ missing }}"
+                    sequence:
+                      - delay:
+                          seconds: 3
+                      - action: landroid_cloud.add_schedule
+                        target:
+                          entity_id: lawn_mower.my_landroid
+                        data:
+                          days: ["{{ repeat.item.day }}"]
+                          start: "{{ repeat.item.start }}"
+                          duration: "{{ repeat.item.duration | int(0) }}"
+                          boundary: "{{ repeat.item.boundary | default(false) | bool }}"
+                        continue_on_error: true
+                - delay:
+                    seconds: 8
             - action: persistent_notification.create
               data:
                 title: Landroid schedule – duplicates removed
                 message: >-
                   Removed {{ parsed.removed | unique | list | length }} duplicate
                   slot(s): {{ parsed.removed | unique | list | join(', ') }}.
+                  {% set written = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+                  {% if written | length < parsed.keep | length %}
+                  WARNING: only {{ written | length }} of {{ parsed.keep | length }}
+                  slots came back – the mower probably went to sleep mid-write.
+                  Re-add the rest from the Schedule view once it is awake.
+                  {% else %}
                   Every other slot was written back unchanged – check the
                   Schedule view.
+                  {% endif %}
                 notification_id: landroid_dedupe

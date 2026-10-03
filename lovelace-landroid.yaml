@@ -324,7 +324,10 @@ views:
           columns:
             - data: schedule_entries.day
               name: Day
-              modify: 'x ? x.charAt(0).toUpperCase() + x.slice(1) : x'
+              # typeof guard: with an empty schedule flex-table hands the
+              # column an empty array, which is truthy in JS and would
+              # crash x.charAt.
+              modify: 'x && typeof x === "string" ? x.charAt(0).toUpperCase() + x.slice(1) : x'
             - data: schedule_entries.start
               name: Start
             - data: schedule_entries.duration
