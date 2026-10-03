@@ -54,6 +54,46 @@ button_card_templates:
         - font-size: 11px
         - justify-self: center
 
+  # Compact horizontal pill for the schedule slot tiles: same Worx card look
+  # as worx_tile but shaped as a wide, low button — icon on the left, day/time
+  # and duration stacked to the right — instead of a square tile with a big
+  # centered icon. The grid-template-areas layout places the icon across both
+  # text rows. Styles are written out in full rather than inherited from
+  # worx_tile so this also works on button-card builds without template
+  # inheritance.
+  worx_slot:
+    styles:
+      card:
+        - border-radius: 16px
+        - background-color: "#FFFFFF"
+        - box-shadow: 0px 2px 6px rgba(59, 59, 59, 0.08)
+        - padding: 10px 12px
+      grid:
+        - grid-template-areas: '"i n" "i l"'
+        - grid-template-columns: min-content 1fr
+        - grid-template-rows: min-content min-content
+        - column-gap: 10px
+      icon:
+        - grid-area: i
+        - align-self: center
+        - color: "#8A8A8A"
+        - width: 22px
+      name:
+        - grid-area: n
+        - color: "#3B3B3B"
+        - font-size: 13px
+        - font-weight: 600
+        - justify-self: start
+      label:
+        - grid-area: l
+        - color: "#8A8A8A"
+        - font-size: 11px
+        - justify-self: start
+      state:
+        - color: "#8A8A8A"
+        - font-size: 11px
+        - justify-self: start
+
 views:
   # ===========================================================================
   # Home — the Worx app's Dashboard screen
@@ -514,7 +554,7 @@ views:
                   {% set ns.tiles = ns.tiles + [
                     {
                       'type': 'custom:button-card',
-                      'template': 'worx_tile',
+                      'template': 'worx_slot',
                       'name': (e.day | capitalize) ~ ' ' ~ e.start,
                       'icon': 'mdi:grass' if e.boundary else 'mdi:robot-mower',
                       'show_label': true,
