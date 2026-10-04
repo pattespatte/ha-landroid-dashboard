@@ -29,7 +29,7 @@ Add each repository in HACS, download it, and register the resource URLs under S
 
 ### Theme via HACS (optional)
 
-Instead of copying `themes/worx.yaml` by hand, you can let HACS install and update it: HACS → ⋮ menu (top right) → Custom repositories → paste `pattespatte/ha-landroid-dashboard` → category **Theme** → Add, then find "Landroid dashboard (Worx theme)" in HACS and download it. The file lands in `/config/themes/worx.yaml` – the same place the manual copy goes.
+Instead of copying `themes/worx.yaml` by hand, you can let HACS install and update it: HACS → ⋮ menu (top right) → Custom repositories → paste `pattespatte/ha-landroid-dashboard` → category **Theme** → Add, then find "Landroid dashboard (Worx theme)" in HACS and download it. HACS puts the file at `/config/themes/worx/worx.yaml` – in a `worx/` subdirectory, not the flat `/config/themes/worx.yaml` of a manual copy. Both places work: Home Assistant loads the `themes/` directory recursively, and the theme registers under the name `worx` no matter where the file sits.
 
 ## Install
 
@@ -84,7 +84,7 @@ If Auto Schedule previously generated the week, "Clear week" on the Schedule vie
 
 | File in this repo | Deploy target |
 |---|---|
-| `themes/worx.yaml` | already in place if you installed the theme through HACS (see Prerequisites); otherwise copy to `/config/themes/worx.yaml` (create the `themes/` folder if none exists) |
+| `themes/worx.yaml` | already in place if you installed the theme through HACS – it lands at `/config/themes/worx/worx.yaml` (see Prerequisites); otherwise copy the file to `/config/themes/worx.yaml` (create the `themes/` folder if none exists) |
 | `lovelace-landroid.yaml` | copy to `/config/lovelace-landroid.yaml` |
 | `snippets/configuration-additions.yaml` | paste both blocks at the top level of `/config/configuration.yaml` |
 | `snippets/input_number-additions.yaml` | paste both blocks into `/config/input_number.yaml` |
@@ -106,7 +106,7 @@ Then Developer Tools → YAML → **Check configuration**, and restart Home Assi
 
 ## Rollback
 
-Delete `/config/themes/worx.yaml` and `/config/lovelace-landroid.yaml`, remove the pasted blocks from the seven configuration files, restart. The device rename and enabled entities can stay – they are harmless on their own.
+Remove the theme – uninstall "Landroid dashboard (Worx theme)" in HACS if it was installed that way (this also removes the `themes/worx/` folder), or delete `/config/themes/worx.yaml` for a manual install – then delete `/config/lovelace-landroid.yaml`, remove the pasted blocks from the seven configuration files, restart. The device rename and enabled entities can stay – they are harmless on their own.
 
 ## Troubleshooting
 
@@ -118,7 +118,7 @@ Delete `/config/themes/worx.yaml` and `/config/lovelace-landroid.yaml`, remove t
 - **Weekly schedule table is empty** – check Developer Tools → States → `sensor.my_landroid_next_schedule`. If the data lives in a differently shaped attribute, the table reads `schedule_entries` (day/start/duration/boundary); swap the column `data:` selectors accordingly, e.g. `schedule_entries.label` as a single column.
 - **Stats show "–"** – the mower is asleep (entities unavailable). Values return when it wakes. If they never do, verify the runtime/distance sensors are enabled (Step 2).
 - **Entity IDs don't match after the rename** – if some entities did not regenerate, rename them individually so they match the list above, or search-and-replace the IDs in `lovelace-landroid.yaml`.
-- **Theme looks default** – confirm the `frontend: themes:` block was pasted, the file sits at `/config/themes/worx.yaml`, and HA was restarted (not just reloaded) at least once after adding the theme.
+- **Theme looks default** – confirm the `frontend: themes:` block was pasted, the theme file is where you put it (`/config/themes/worx/worx.yaml` for a HACS install, `/config/themes/worx.yaml` for a manual copy), and HA was restarted (not just reloaded) at least once after adding the theme.
 
 ## License
 

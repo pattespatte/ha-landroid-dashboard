@@ -5,15 +5,17 @@
 # (e.g. next to the other !include integrations at the bottom of the file).
 #
 # Prerequisites (see the repo README):
-#   /config/themes/worx.yaml            (from themes/worx.yaml in this repo)
+#   /config/themes/worx.yaml            (manual copy; HACS installs it as
+#                                       /config/themes/worx/worx.yaml – either works)
 #   /config/lovelace-landroid.yaml      (from lovelace-landroid.yaml in this repo)
 #
 # After pasting: Developer Tools -> YAML -> Check configuration, then restart.
 # Rollback: delete both blocks and restart.
 # =============================================================================
 
-# 1) Custom themes — loads every YAML file in /config/themes/ as a theme,
-#    which is where the "worx" theme (themes/worx.yaml) lives.
+# 1) Custom themes — loads every YAML file anywhere under /config/themes/
+#    (recursively) as a theme; the "worx" theme lives there as either
+#    themes/worx.yaml (manual copy) or themes/worx/worx.yaml (HACS install).
 frontend:
   themes: !include_dir_merge_named themes
 

@@ -1,5 +1,6 @@
 # Worx (Landroid app) theme for the Landroid dashboard.
-# Deploy to: /config/themes/worx.yaml
+# Deploy to: /config/themes/worx.yaml (manual copy) – a HACS install lands
+# at /config/themes/worx/worx.yaml; any path under themes/ works.
 # Registers as theme name "worx"; applied per view in lovelace-landroid.yaml
 # via `theme: worx` so only the Landroid dashboard changes look.
 #
