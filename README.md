@@ -33,16 +33,24 @@ Instead of copying `themes/worx.yaml` by hand, you can let HACS install and upda
 
 ## Install
 
-### Step 1 – rename the device (once, in the HA UI)
+### Step 1 – name the mower and align the entity IDs (once, in the HA UI)
 
-The dashboard expects the mower entity to be `lawn_mower.my_landroid` and its children to use the `my_landroid_` prefix. The Worx cloud generates a device name of its own, so rename the device once so the entity IDs become readable and match:
+The dashboard expects the mower entity to be `lawn_mower.my_landroid` and its children to use the `my_landroid_` prefix. The Worx cloud generates a device name of its own, so a one-time rename makes the entity IDs readable and matches the dashboard:
 
-1. Settings → Devices & services → the Worx device → pencil icon.
-2. Rename it to **My Landroid** and accept the option to update entity IDs (children regenerate to `my_landroid_*`).
-3. Open the lawn mower entity → gear → make sure its entity ID is `lawn_mower.my_landroid`.
-4. If any card on an existing dashboard already referenced the mower, point it at the new entity ID.
+1. Settings → Devices & services → the Worx device → pencil icon → rename it to **My Landroid**. If your HA version offers to update the entity IDs at the same time (older versions show an "Update entity IDs" checkbox), accept it and skip ahead to Step 2.
+2. Recent HA versions no longer offer that option – renaming a device only changes display names, never entity IDs. On the device page, open each entity below, tap the gear, and change the entity ID prefix to `my_landroid_` (for example `sensor.worx_..._next_schedule` → `sensor.my_landroid_next_schedule`). Nine entities are referenced by the dashboard:
+   - `lawn_mower.my_landroid`
+   - `sensor.my_landroid_next_schedule`
+   - `sensor.my_landroid_daily_progress`
+   - `sensor.my_landroid_mower_runtime_total`
+   - `sensor.my_landroid_blade_runtime_total`
+   - `sensor.my_landroid_distance_driven_total`
+   - `button.my_landroid_edge_cut`
+   - `switch.my_landroid_party_mode`
+   - `switch.my_landroid_lock`
+3. If any card on an existing dashboard already referenced the mower, point it at the new entity ID.
 
-Nothing changes in the Worx cloud and entity history is preserved.
+Nothing changes in the Worx cloud, and entity history follows the rename in current HA versions.
 
 ### Step 2 – enable the disabled entities (once, in the HA UI)
 
@@ -117,7 +125,7 @@ Remove the theme – uninstall "Landroid dashboard (Worx theme)" in HACS if it w
 - **"No schedule entry matches the selected day and start time" when saving an edit** – the slot you tapped no longer exists on the mower. The slot tiles and the "Editing …" banner are rendered from `sensor.my_landroid_next_schedule`, which only updates when the mower reports in, so after any schedule change (an earlier edit or delete, a rebuild, or a change in the Worx app) they can briefly show ghost slots. `script.landroid_schedule_save_edit` re-checks the edit target against the current schedule before writing and stops with instructions; nothing is saved. Tap Cancel and pick the slot again once the list refreshes. If the message says the slot exists more than once, run the repair tool first (Developer Tools → Actions → `script.landroid_schedule_dedupe_all`).
 - **Weekly schedule table is empty** – check Developer Tools → States → `sensor.my_landroid_next_schedule`. If the data lives in a differently shaped attribute, the table reads `schedule_entries` (day/start/duration/boundary); swap the column `data:` selectors accordingly, e.g. `schedule_entries.label` as a single column.
 - **Stats show "–"** – the mower is asleep (entities unavailable). Values return when it wakes. If they never do, verify the runtime/distance sensors are enabled (Step 2).
-- **Entity IDs don't match after the rename** – if some entities did not regenerate, rename them individually so they match the list above, or search-and-replace the IDs in `lovelace-landroid.yaml`.
+- **Entity IDs don't match** – current HA versions never rename entity IDs when a device is renamed (the device dialog only changes display names). Rename the nine entities from Step 1 individually via their gear dialogs, or search-and-replace the IDs in `lovelace-landroid.yaml`. A dashboard that finds the mower automatically – no renaming at all – is planned for the next release.
 - **Theme looks default** – confirm the `frontend: themes:` block was pasted, the theme file is where you put it (`/config/themes/worx/worx.yaml` for a HACS install, `/config/themes/worx.yaml` for a manual copy), and HA was restarted (not just reloaded) at least once after adding the theme.
 
 ## License
