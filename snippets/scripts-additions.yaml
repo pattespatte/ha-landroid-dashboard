@@ -10,6 +10,10 @@
 # effect while the mower is awake/online – the cloud refuses schedule
 # writes while a docked Landroid sleeps its WiFi.
 #
+# The mower itself is resolved through the sensor.landroid_mower_reference
+# discovery sensor (see snippets/configuration-additions.yaml) – no entity
+# IDs are hardcoded, so the mower can be named anything.
+#
 # landroid_schedule_dedupe_all is a REPAIR TOOL, not part of the dashboard
 # UI: if exact duplicate slots ever appear (same day + start time), run it
 # manually from Developer Tools -> Actions. Safe to run repeatedly.
@@ -24,9 +28,11 @@ landroid_ots:
     awake/online.
   mode: single
   sequence:
+  - variables:
+      mower: "{{ states('sensor.landroid_mower_reference') }}"
   - action: landroid_cloud.ots
     target:
-      entity_id: lawn_mower.my_landroid
+      entity_id: "{{ mower }}"
     data:
       runtime: "{{ states('input_number.landroid_ots_minutes') | int(60) }}"
       boundary: false
@@ -141,13 +147,15 @@ landroid_schedule_add:
   mode: single
   sequence:
     - variables:
+        mower: "{{ states('sensor.landroid_mower_reference') }}"
+        sched_sensor: "sensor.{{ state_attr('sensor.landroid_mower_reference', 'prefix') }}_next_schedule"
         sched_days: >-
           {{ ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
              if is_state('input_boolean.landroid_sched_all_days', 'on')
              else [states('input_select.landroid_sched_day') | lower] }}
         sched_start: "{{ states('input_datetime.landroid_sched_start')[:5] }}"
         clash_days: >-
-          {{ (state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [])
+          {{ (state_attr(sched_sensor, 'schedule_entries') or [])
              | selectattr('day', 'in', sched_days)
              | selectattr('start', 'equalto', sched_start)
              | map(attribute='day') | list }}
@@ -163,7 +171,7 @@ landroid_schedule_add:
           error: true
     - action: landroid_cloud.add_schedule
       target:
-        entity_id: lawn_mower.my_landroid
+        entity_id: "{{ mower }}"
       data:
         days: "{{ sched_days }}"
         start: "{{ sched_start }}"
@@ -185,6 +193,9 @@ landroid_schedule_save_edit:
     awake/online.
   mode: single
   sequence:
+    - variables:
+        mower: "{{ states('sensor.landroid_mower_reference') }}"
+        sched_sensor: "sensor.{{ state_attr('sensor.landroid_mower_reference', 'prefix') }}_next_schedule"
     - if:
         - condition: template
           value_template: >-
@@ -194,7 +205,7 @@ landroid_schedule_save_edit:
         - if:
             - condition: template
               value_template: >-
-                {{ states('sensor.my_landroid_next_schedule') in ['unknown', 'unavailable', 'none'] }}
+                {{ states(sched_sensor) in ['unknown', 'unavailable', 'none'] }}
           then:
             - stop: >-
                 The mower is asleep – the cloud refuses schedule writes while
@@ -205,7 +216,7 @@ landroid_schedule_save_edit:
             edit_day: "{{ states('input_text.landroid_sched_edit_day') }}"
             edit_start: "{{ states('input_text.landroid_sched_edit_start') }}"
             target_matches: >-
-              {{ (state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [])
+              {{ (state_attr(sched_sensor, 'schedule_entries') or [])
                  | selectattr('day', 'equalto', edit_day)
                  | selectattr('start', 'equalto', edit_start)
                  | list }}
@@ -231,7 +242,7 @@ landroid_schedule_save_edit:
               error: true
         - action: landroid_cloud.edit_schedule
           target:
-            entity_id: lawn_mower.my_landroid
+            entity_id: "{{ mower }}"
           data:
             current_day: "{{ edit_day }}"
             current_start: "{{ edit_start }}"
@@ -282,10 +293,13 @@ landroid_schedule_delete:
     view. Requires the mower to be awake/online.
   mode: single
   sequence:
+    - variables:
+        mower: "{{ states('sensor.landroid_mower_reference') }}"
+        sched_sensor: "sensor.{{ state_attr('sensor.landroid_mower_reference', 'prefix') }}_next_schedule"
     - if:
         - condition: template
           value_template: >-
-            {{ states('sensor.my_landroid_next_schedule') in ['unknown', 'unavailable', 'none'] }}
+            {{ states(sched_sensor) in ['unknown', 'unavailable', 'none'] }}
       then:
         - stop: >-
             The mower is asleep – the cloud refuses schedule writes while it
@@ -294,7 +308,7 @@ landroid_schedule_delete:
           error: true
     - variables:
         entries: >-
-          {{ state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] }}
+          {{ state_attr(sched_sensor, 'schedule_entries') or [] }}
         matching: >-
           {{ entries | selectattr('day', 'equalto', day) | selectattr('start', 'equalto', start) | list }}
     - choose:
@@ -305,7 +319,7 @@ landroid_schedule_delete:
           sequence:
             - action: landroid_cloud.delete_schedule
               target:
-                entity_id: lawn_mower.my_landroid
+                entity_id: "{{ mower }}"
               data:
                 day: "{{ day }}"
                 start: "{{ start }}"
@@ -333,7 +347,7 @@ landroid_schedule_delete:
               {{ ns.keep }}
         - action: landroid_cloud.delete_schedule
           target:
-            entity_id: lawn_mower.my_landroid
+            entity_id: "{{ mower }}"
           data:
             all_schedules: true
         - repeat:
@@ -343,7 +357,7 @@ landroid_schedule_delete:
                   seconds: 2
               - action: landroid_cloud.add_schedule
                 target:
-                  entity_id: lawn_mower.my_landroid
+                  entity_id: "{{ mower }}"
                 data:
                   days: ["{{ repeat.item.day }}"]
                   start: "{{ repeat.item.start }}"
@@ -353,7 +367,7 @@ landroid_schedule_delete:
             seconds: 8
         - variables:
             missing: |
-              {% set written = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+              {% set written = state_attr(sched_sensor, 'schedule_entries') or [] %}
               {% set ns = namespace(keys=[], missing=[]) %}
               {% for w in written %}
               {% set ns.keys = ns.keys + [w.day ~ ' ' ~ w.start] %}
@@ -375,7 +389,7 @@ landroid_schedule_delete:
                       seconds: 3
                   - action: landroid_cloud.add_schedule
                     target:
-                      entity_id: lawn_mower.my_landroid
+                      entity_id: "{{ mower }}"
                     data:
                       days: ["{{ repeat.item.day }}"]
                       start: "{{ repeat.item.start }}"
@@ -386,7 +400,7 @@ landroid_schedule_delete:
                 seconds: 8
             - variables:
                 still_missing: |
-                  {% set written = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+                  {% set written = state_attr(sched_sensor, 'schedule_entries') or [] %}
                   {% set ns = namespace(keys=[], missing=[]) %}
                   {% for w in written %}
                   {% set ns.keys = ns.keys + [w.day ~ ' ' ~ w.start] %}
@@ -448,10 +462,13 @@ landroid_schedule_dedupe_all:
     schedule has no duplicates.
   mode: single
   sequence:
+    - variables:
+        mower: "{{ states('sensor.landroid_mower_reference') }}"
+        sched_sensor: "sensor.{{ state_attr('sensor.landroid_mower_reference', 'prefix') }}_next_schedule"
     - if:
         - condition: template
           value_template: >-
-            {{ states('sensor.my_landroid_next_schedule') in ['unknown', 'unavailable', 'none'] }}
+            {{ states(sched_sensor) in ['unknown', 'unavailable', 'none'] }}
       then:
         - action: persistent_notification.create
           data:
@@ -464,7 +481,7 @@ landroid_schedule_dedupe_all:
       else:
         - variables:
             entries: >-
-              {{ state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] }}
+              {{ state_attr(sched_sensor, 'schedule_entries') or [] }}
             parsed: |
               {% set ns = namespace(keep=[], seen=[], removed=[]) %}
               {% for e in entries %}
@@ -489,7 +506,7 @@ landroid_schedule_dedupe_all:
           else:
             - action: landroid_cloud.delete_schedule
               target:
-                entity_id: lawn_mower.my_landroid
+                entity_id: "{{ mower }}"
               data:
                 all_schedules: true
             # repeat.item (not bare item) – bare item was removed in HA's
@@ -501,7 +518,7 @@ landroid_schedule_dedupe_all:
                       seconds: 2
                   - action: landroid_cloud.add_schedule
                     target:
-                      entity_id: lawn_mower.my_landroid
+                      entity_id: "{{ mower }}"
                     data:
                       days: ["{{ repeat.item.day }}"]
                       start: "{{ repeat.item.start }}"
@@ -511,7 +528,7 @@ landroid_schedule_dedupe_all:
                 seconds: 8
             - variables:
                 missing: |
-                  {% set written = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+                  {% set written = state_attr(sched_sensor, 'schedule_entries') or [] %}
                   {% set ns = namespace(keys=[], missing=[]) %}
                   {% for w in written %}
                   {% set ns.keys = ns.keys + [w.day ~ ' ' ~ w.start] %}
@@ -533,7 +550,7 @@ landroid_schedule_dedupe_all:
                           seconds: 3
                       - action: landroid_cloud.add_schedule
                         target:
-                          entity_id: lawn_mower.my_landroid
+                          entity_id: "{{ mower }}"
                         data:
                           days: ["{{ repeat.item.day }}"]
                           start: "{{ repeat.item.start }}"
@@ -548,7 +565,7 @@ landroid_schedule_dedupe_all:
                 message: >-
                   Removed {{ parsed.removed | unique | list | length }} duplicate
                   slot(s): {{ parsed.removed | unique | list | join(', ') }}.
-                  {% set written = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+                  {% set written = state_attr(sched_sensor, 'schedule_entries') or [] %}
                   {% if written | length < parsed.keep | length %}
                   WARNING: only {{ written | length }} of {{ parsed.keep | length }}
                   slots came back – the mower probably went to sleep mid-write.

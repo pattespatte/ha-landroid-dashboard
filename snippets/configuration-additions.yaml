@@ -1,7 +1,7 @@
 # =============================================================================
 # Landroid dashboard additions for /config/configuration.yaml
 #
-# Paste BOTH blocks below at the TOP LEVEL of configuration.yaml
+# Paste ALL THREE blocks below at the TOP LEVEL of configuration.yaml
 # (e.g. next to the other !include integrations at the bottom of the file).
 #
 # Prerequisites (see the repo README):
@@ -10,7 +10,7 @@
 #   /config/lovelace-landroid.yaml      (from lovelace-landroid.yaml in this repo)
 #
 # After pasting: Developer Tools -> YAML -> Check configuration, then restart.
-# Rollback: delete both blocks and restart.
+# Rollback: delete all three blocks and restart.
 # =============================================================================
 
 # 1) Custom themes — loads every YAML file anywhere under /config/themes/
@@ -32,3 +32,31 @@ lovelace:
       icon: mdi:robot-mower
       filename: lovelace-landroid.yaml
       show_in_sidebar: true
+
+# 3) Mower discovery — resolves the mower automatically so the dashboard and
+#    scripts never hardcode entity IDs and the mower can be named anything.
+#    The sensor's state is the lawn_mower entity (e.g. "lawn_mower.my_landroid"),
+#    its `prefix` attribute is the part after the dot (e.g. "my_landroid").
+#    Its `next_schedule_state` attribute mirrors the resolved next-schedule
+#    sensor's state — the dashboard's conditional cards key off it (state
+#    conditions cannot reference a dynamic entity ID directly, but they CAN
+#    watch this static sensor's attribute).
+#    With more than one lawn_mower.* entity the alphabetically first one wins
+#    (single-mower setups are the supported case).
+#    Note: if configuration.yaml already has a `template:` block, paste the
+#    sensor list under it instead of adding a second `template:` key.
+template:
+  - sensor:
+      - unique_id: landroid_mower_reference
+        name: Landroid mower reference
+        icon: mdi:robot-mower
+        state: >
+          {{ states.lawn_mower | map(attribute='entity_id') | list | first | default('unavailable') }}
+        attributes:
+          prefix: >-
+            {% set mower = states.lawn_mower | map(attribute='entity_id') | list | first | default('') %}
+            {{ mower.split('.')[1] if '.' in mower else '' }}
+          next_schedule_state: >-
+            {% set mower = states.lawn_mower | map(attribute='entity_id') | list | first | default('') %}
+            {% set p = mower.split('.')[1] if '.' in mower else '' %}
+            {{ states('sensor.' ~ p ~ '_next_schedule') if p else 'unavailable' }}

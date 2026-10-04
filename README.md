@@ -4,7 +4,7 @@ A dedicated Home Assistant dashboard that imitates the Worx Landroid app – cre
 
 ![Landroid dashboard](docs/screenshot.png)
 
-Everything ships as plain YAML you copy or paste into an existing Home Assistant configuration – no install script. The theme is the one piece HACS can manage for you (HACS has no dashboard category); the rest stays copy/paste.
+Everything ships as plain YAML you copy or paste into an existing Home Assistant configuration – no install script. The theme is the one piece HACS can manage for you (HACS has no dashboard category); the rest stays copy/paste. The dashboard is name-agnostic: it resolves your mower automatically, whatever it is called – no renaming and no entity-ID editing.
 
 ## What you get
 
@@ -33,57 +33,29 @@ Instead of copying `themes/worx.yaml` by hand, you can let HACS install and upda
 
 ## Install
 
-### Step 1 – name the mower and align the entity IDs (once, in the HA UI)
+### Step 1 – enable the disabled entities (once, in the HA UI)
 
-The dashboard expects the mower entity to be `lawn_mower.my_landroid` and its children to use the `my_landroid_` prefix. The Worx cloud generates a device name of its own, so a one-time rename makes the entity IDs readable and matches the dashboard:
+The dashboard resolves your mower automatically through the `sensor.landroid_mower_reference` discovery sensor (installed with the files in Step 3), so the mower can be named anything – no renaming, no entity-ID editing. The entities just have to exist and be enabled.
 
-1. Settings → Devices & services → the Worx device → pencil icon → rename it to **My Landroid**. If your HA version offers to update the entity IDs at the same time (older versions show an "Update entity IDs" checkbox), accept it and skip ahead to Step 2.
-2. Recent HA versions no longer offer that option – renaming a device only changes display names, never entity IDs. On the device page, open each entity below, tap the gear, and change the entity ID prefix to `my_landroid_` (for example `sensor.worx_..._next_schedule` → `sensor.my_landroid_next_schedule`). Nine entities are referenced by the dashboard:
-   - `lawn_mower.my_landroid`
-   - `sensor.my_landroid_next_schedule`
-   - `sensor.my_landroid_daily_progress`
-   - `sensor.my_landroid_mower_runtime_total`
-   - `sensor.my_landroid_blade_runtime_total`
-   - `sensor.my_landroid_distance_driven_total`
-   - `button.my_landroid_edge_cut`
-   - `switch.my_landroid_party_mode`
-   - `switch.my_landroid_lock`
-3. If any card on an existing dashboard already referenced the mower, point it at the new entity ID.
+Most landroid_cloud entities are disabled by default. On the device page, enable every entity whose entity ID ends with one of these suffixes (gear dialog → Enabled):
 
-Nothing changes in the Worx cloud, and entity history follows the rename in current HA versions.
-
-### Step 2 – enable the disabled entities (once, in the HA UI)
-
-Most landroid_cloud entities are disabled by default. On the device page, enable each of these (gear dialog → Enabled):
-
-- `button.my_landroid_edge_cut`
-- `switch.my_landroid_party_mode`
-- `switch.my_landroid_lock`
-- `number.my_landroid_rain_delay`
-- `number.my_landroid_time_extension`
-- `number.my_landroid_torque`
-- `sensor.my_landroid_next_schedule`
-- `sensor.my_landroid_daily_progress`
-- `sensor.my_landroid_signal_strength`
-- `sensor.my_landroid_last_update`
-- `sensor.my_landroid_rain_delay_remaining`
-- `sensor.my_landroid_mower_runtime_total`
-- `sensor.my_landroid_blade_runtime_total`
-- `sensor.my_landroid_blade_runtime_since_reset`
-- `sensor.my_landroid_blade_runtime_at_last_reset`
-- `sensor.my_landroid_distance_driven_total`
-- `sensor.my_landroid_battery_charge_cycles_total`
-- `sensor.my_landroid_battery_charge_cycles_since_reset`
-- `button.my_landroid_reset_blade_runtime`
-- `select.my_landroid_zone`
+- the `lawn_mower.…` entity itself
+- `…_edge_cut` (button)
+- `…_party_mode` and `…_lock` (switches)
+- `…_rain_delay`, `…_time_extension`, `…_torque` (numbers)
+- `…_next_schedule`, `…_daily_progress`, `…_signal_strength`, `…_last_update`, `…_rain_delay_remaining` (sensors)
+- `…_mower_runtime_total`, `…_blade_runtime_total`, `…_blade_runtime_since_reset`, `…_blade_runtime_at_last_reset`, `…_distance_driven_total` (sensors)
+- `…_battery_charge_cycles_total`, `…_battery_charge_cycles_since_reset` (sensors)
+- `…_reset_blade_runtime` (button)
+- `…_zone` (select)
 
 A docked Landroid sleeps its WiFi, so new entities may show `unavailable`/`unknown` until the mower next wakes up – that is expected, not a fault. If an entity is still unavailable after a full mowing session, leave it disabled and skip it; the dashboard degrades gracefully.
 
-### Step 2b – switch to a manual schedule (once, in the HA UI)
+### Step 2 – switch to a manual schedule (once, in the HA UI)
 
 The schedule editor manages the weekly slots itself; Worx Auto Schedule would regenerate them over any manual edit. Before using the editor:
 
-1. Enable `switch.my_landroid_auto_schedule` on the device page (disabled by default).
+1. Enable the `…_auto_schedule` switch on the device page (disabled by default).
 2. Switch it **off** and leave it off.
 
 If Auto Schedule previously generated the week, "Clear week" on the Schedule view wipes those slots in one confirmed tap.
@@ -94,7 +66,7 @@ If Auto Schedule previously generated the week, "Clear week" on the Schedule vie
 |---|---|
 | `themes/worx.yaml` | already in place if you installed the theme through HACS – it lands at `/config/themes/worx/worx.yaml` (see Prerequisites); otherwise copy the file to `/config/themes/worx.yaml` (create the `themes/` folder if none exists) |
 | `lovelace-landroid.yaml` | copy to `/config/lovelace-landroid.yaml` |
-| `snippets/configuration-additions.yaml` | paste both blocks at the top level of `/config/configuration.yaml` |
+| `snippets/configuration-additions.yaml` | paste all three blocks at the top level of `/config/configuration.yaml` (block 3 adds the mower discovery sensor everything else resolves through) |
 | `snippets/input_number-additions.yaml` | paste both blocks into `/config/input_number.yaml` |
 | `snippets/input_datetime-additions.yaml` | paste the block into `/config/input_datetime.yaml` |
 | `snippets/input_select-additions.yaml` | paste the block into `/config/input_select.yaml` |
@@ -114,7 +86,7 @@ Then Developer Tools → YAML → **Check configuration**, and restart Home Assi
 
 ## Rollback
 
-Remove the theme – uninstall "Landroid dashboard (Worx theme)" in HACS if it was installed that way (this also removes the `themes/worx/` folder), or delete `/config/themes/worx.yaml` for a manual install – then delete `/config/lovelace-landroid.yaml`, remove the pasted blocks from the seven configuration files, restart. The device rename and enabled entities can stay – they are harmless on their own.
+Remove the theme – uninstall "Landroid dashboard (Worx theme)" in HACS if it was installed that way (this also removes the `themes/worx/` folder), or delete `/config/themes/worx.yaml` for a manual install – then delete `/config/lovelace-landroid.yaml`, remove the pasted blocks from the seven configuration files, restart. The enabled entities can stay – they are harmless on their own.
 
 ## Troubleshooting
 
@@ -122,10 +94,10 @@ Remove the theme – uninstall "Landroid dashboard (Worx theme)" in HACS if it w
 - **"Your slots" fills with "Configuration error" boxes** – the auto-entities `filter.template` must evaluate to a native *list* of card configs (the `{{ ns.tiles }}` expression). auto-entities 1.16+ splits any text/YAML result on whitespace, turning each fragment into a junk entity with one error card each. Don't "simplify" the template back to YAML output.
 - **"Error rendering data template: 'item' is undefined"** – the rebuild loops inside `script.landroid_schedule_delete` and `script.landroid_schedule_dedupe_all` must use **`repeat.item`**; bare `{{ item.* }}` stopped being defined inside `repeat: for_each` when Home Assistant rewrote script-variable scoping. A rebuild with bare `item` is worse than a no-op: it clears the week first and then crashes on the first re-add, leaving the mower with an empty schedule – which is exactly the data-loss bug fixed in this repo (2026-10-03). If you copy these scripts from an older source, update every `item.` to `repeat.item.`.
 - **A rebuild reports "rebuild incomplete" / "duplicates removed" with a WARNING** – the mower went back to sleep mid-write (Worx mowers often drop their cloud connection seconds after a schedule write). The scripts re-check what actually landed, retry the missing slots once, and tell you whatever is still missing as a persistent notification; re-run the same script once the mower is awake – it only fills in what is missing.
-- **"No schedule entry matches the selected day and start time" when saving an edit** – the slot you tapped no longer exists on the mower. The slot tiles and the "Editing …" banner are rendered from `sensor.my_landroid_next_schedule`, which only updates when the mower reports in, so after any schedule change (an earlier edit or delete, a rebuild, or a change in the Worx app) they can briefly show ghost slots. `script.landroid_schedule_save_edit` re-checks the edit target against the current schedule before writing and stops with instructions; nothing is saved. Tap Cancel and pick the slot again once the list refreshes. If the message says the slot exists more than once, run the repair tool first (Developer Tools → Actions → `script.landroid_schedule_dedupe_all`).
-- **Weekly schedule table is empty** – check Developer Tools → States → `sensor.my_landroid_next_schedule`. If the data lives in a differently shaped attribute, the table reads `schedule_entries` (day/start/duration/boundary); swap the column `data:` selectors accordingly, e.g. `schedule_entries.label` as a single column.
-- **Stats show "–"** – the mower is asleep (entities unavailable). Values return when it wakes. If they never do, verify the runtime/distance sensors are enabled (Step 2).
-- **Entity IDs don't match** – current HA versions never rename entity IDs when a device is renamed (the device dialog only changes display names). Rename the nine entities from Step 1 individually via their gear dialogs, or search-and-replace the IDs in `lovelace-landroid.yaml`. A dashboard that finds the mower automatically – no renaming at all – is planned for the next release.
+- **"No schedule entry matches the selected day and start time" when saving an edit** – the slot you tapped no longer exists on the mower. The slot tiles and the "Editing …" banner are rendered from the `…_next_schedule` sensor, which only updates when the mower reports in, so after any schedule change (an earlier edit or delete, a rebuild, or a change in the Worx app) they can briefly show ghost slots. `script.landroid_schedule_save_edit` re-checks the edit target against the current schedule before writing and stops with instructions; nothing is saved. Tap Cancel and pick the slot again once the list refreshes. If the message says the slot exists more than once, run the repair tool first (Developer Tools → Actions → `script.landroid_schedule_dedupe_all`).
+- **Weekly schedule table is empty** – check Developer Tools → States → the `…_next_schedule` sensor. If the data lives in a differently shaped attribute, the table reads `schedule_entries` (day/start/duration/boundary); swap the column `data:` selectors accordingly, e.g. `schedule_entries.label` as a single column.
+- **Stats show "–"** – the mower is asleep (entities unavailable). Values return when it wakes. If they never do, verify the runtime/distance sensors are enabled (Step 1).
+- **Cards are missing / the schedule editor reports the discovery sensor** – everything resolves the mower through `sensor.landroid_mower_reference`, which the `template:` block (block 3 of snippets/configuration-additions.yaml) creates. If it is unavailable: the block was not pasted, it was added as a second `template:` key instead of merged under the existing one, or HA was not restarted/reloaded after pasting. Check Developer Tools → States – the sensor's state must be your mower entity (e.g. `lawn_mower.my_landroid`). With more than one lawn_mower entity the alphabetically first one wins; single-mower setups are the supported case.
 - **Theme looks default** – confirm the `frontend: themes:` block was pasted, the theme file is where you put it (`/config/themes/worx/worx.yaml` for a HACS install, `/config/themes/worx.yaml` for a manual copy), and HA was restarted (not just reloaded) at least once after adding the theme.
 
 ## License

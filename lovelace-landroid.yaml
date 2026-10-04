@@ -6,9 +6,11 @@
 # landroid-dashboard:` (see snippets/configuration-additions.yaml).
 #
 # Prerequisites (see README.md):
-#   - Device renamed to "My Landroid" so entity IDs are my_landroid_* and the
-#     mower entity is lawn_mower.my_landroid.
-#   - The my_landroid entities listed in README.md enabled (most are disabled
+#   - The mower discovery sensor `sensor.landroid_mower_reference` from
+#     snippets/configuration-additions.yaml (block 3). Everything below
+#     resolves the mower through it — name your mower anything, no renaming
+#     or entity-ID editing is needed.
+#   - The mower's entities listed in README.md enabled (most are disabled
 #     by default).
 #   - The schedule editor helpers + scripts from snippets/ pasted into the
 #     live input_* / scripts files (they live outside this dashboard file).
@@ -24,6 +26,21 @@
 #
 # button-card note: labels use [[[ ... ]]] JS blocks (not ${...} shorthand) —
 # the shorthand is not supported by every button-card build.
+#
+# Name-agnostic references:
+#   - Static cards that cannot template their `entity:` (landroid-card,
+#     flex-table, entity/entities cards) are wrapped in auto-entities, whose
+#     filter template builds the card config with the resolved entity baked
+#     in (same proven pattern as the slot grid at the bottom). The templates
+#     build a namespace list and end with a bare `{{ ns.cards }}` expression
+#     so the render_template websocket returns a native list (a text result
+#     gets split into junk entities by auto-entities).
+#   - button-card tiles resolve the prefix in JS via the discovery sensor and
+#     template `entity:` and action targets inline.
+#   - Conditional cards use state conditions on the discovery sensor's
+#     `next_schedule_state` attribute (NOT `condition: template` — older
+#     frontend builds reject template conditions in conditional cards with
+#     a "Configuration error").
 # =============================================================================
 
 title: Landroid
@@ -106,35 +123,60 @@ views:
     cards:
       # Main status card: image, status, battery popup, toolbar (start/pause/
       # dock/edgecut) and the minimal stats row. battery/info/statistics/
-      # settings popups are left to the card's auto-discovery.
-      - type: custom:landroid-card
-        entity: lawn_mower.my_landroid
-        image: default
-        image_size: 4
-        show_name: true
-        show_status: true
-        show_toolbar: true
-        show_edgecut: true
-        show_animation: true
-        stats:
-          default:
-            - entity_id: sensor.my_landroid_mower_runtime_total
-              subtitle: Work time
-              value_template: >-
-                {% if value in ['unknown', 'unavailable'] %}–{% else %}{{ value | float(0) | round(1) }} h{% endif %}
-            - entity_id: sensor.my_landroid_blade_runtime_total
-              subtitle: Blade time
-              value_template: >-
-                {% if value in ['unknown', 'unavailable'] %}–{% else %}{{ value | float(0) | round(1) }} h{% endif %}
-            - entity_id: sensor.my_landroid_distance_driven_total
-              subtitle: Distance
-              value_template: >-
-                {% if value in ['unknown', 'unavailable'] %}–{% else %}{{ value | float(0) | round(1) }} km{% endif %}
+      # settings popups are left to the card's auto-discovery. Wrapped in
+      # auto-entities so `entity:` and the stats rows resolve through the
+      # discovery sensor instead of a hardcoded name.
+      - type: custom:auto-entities
+        show_empty: false
+        card_param: cards
+        filter:
+          template: |
+            {% set p = state_attr('sensor.landroid_mower_reference', 'prefix') %}
+            {% set ns = namespace(cards = []) %}
+            {% if p %}
+            {% set ns.cards = ns.cards + [{
+              'type': 'custom:landroid-card',
+              'entity': 'lawn_mower.' ~ p,
+              'image': 'default',
+              'image_size': 4,
+              'show_name': true,
+              'show_status': true,
+              'show_toolbar': true,
+              'show_edgecut': true,
+              'show_animation': true,
+              'stats': {'default': [
+                {'entity_id': 'sensor.' ~ p ~ '_mower_runtime_total', 'subtitle': 'Work time',
+                 'value_template': "{% if value in ['unknown', 'unavailable'] %}–{% else %}{{ value | float(0) | round(1) }} h{% endif %}"},
+                {'entity_id': 'sensor.' ~ p ~ '_blade_runtime_total', 'subtitle': 'Blade time',
+                 'value_template': "{% if value in ['unknown', 'unavailable'] %}–{% else %}{{ value | float(0) | round(1) }} h{% endif %}"},
+                {'entity_id': 'sensor.' ~ p ~ '_distance_driven_total', 'subtitle': 'Distance',
+                 'value_template': "{% if value in ['unknown', 'unavailable'] %}–{% else %}{{ value | float(0) | round(1) }} km{% endif %}"},
+              ]},
+            }] %}
+            {% endif %}
+            {{ ns.cards }}
+        # Fallback WITHOUT a cards key: auto-entities merges this card config
+        # OVER the generated card list, so a `cards: []` here would wipe the
+        # generated cards (they simply never render).
+        card:
+          type: vertical-stack
 
-      - type: entity
-        entity: sensor.my_landroid_next_schedule
-        name: Next scheduled start
-        icon: mdi:calendar-clock
+      - type: custom:auto-entities
+        show_empty: false
+        card_param: cards
+        filter:
+          template: |
+            {% set p = state_attr('sensor.landroid_mower_reference', 'prefix') %}
+            {% set ns = namespace(cards = []) %}
+            {% if p %}
+            {% set ns.cards = ns.cards + [{'type': 'entity', 'entity': 'sensor.' ~ p ~ '_next_schedule', 'name': 'Next scheduled start', 'icon': 'mdi:calendar-clock'}] %}
+            {% endif %}
+            {{ ns.cards }}
+        # Fallback WITHOUT a cards key: auto-entities merges this card config
+        # OVER the generated card list, so a `cards: []` here would wipe the
+        # generated cards (they simply never render).
+        card:
+          type: vertical-stack
 
       # App-replica tile grid (2 columns, like the Worx app home screen).
       - type: grid
@@ -146,17 +188,26 @@ views:
             template: worx_tile
             name: Edge routine
             icon: mdi:grass
-            entity: lawn_mower.my_landroid
+            entity: >-
+              [[[
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                return p ? 'lawn_mower.' + p : '';
+              ]]]
             show_label: true
             label: |
               [[[
-                return states['lawn_mower.my_landroid'] ? (states['lawn_mower.my_landroid'].state === 'unavailable' ? 'Asleep' : 'Tap to run') : 'Tap to run';
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                const mower = p ? states['lawn_mower.' + p] : undefined;
+                return mower ? (mower.state === 'unavailable' ? 'Asleep' : 'Tap to run') : 'Tap to run';
               ]]]
             tap_action:
               action: perform-action
               perform_action: button.press
               target:
-                entity_id: button.my_landroid_edge_cut
+                entity_id: >-
+                  [[[
+                    return 'button.' + states['sensor.landroid_mower_reference']?.attributes?.prefix + '_edge_cut';
+                  ]]]
             styles:
               icon:
                 - color: "#FF8200"
@@ -172,11 +223,16 @@ views:
             template: worx_tile
             name: One Time Schedule
             icon: mdi:calendar-clock
-            entity: lawn_mower.my_landroid
+            entity: >-
+              [[[
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                return p ? 'lawn_mower.' + p : '';
+              ]]]
             show_label: true
             label: |
               [[[
-                const mower = states['lawn_mower.my_landroid'];
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                const mower = p ? states['lawn_mower.' + p] : undefined;
                 const mins = states['input_number.landroid_ots_minutes'];
                 if (!mower || mower.state === 'unavailable') return 'Asleep';
                 return mins ? Math.round(parseFloat(mins.state)) + ' min' : '';
@@ -199,13 +255,18 @@ views:
           # Party Mode — pause the weekly schedule (app tile replica).
           - type: custom:button-card
             template: worx_tile
-            entity: switch.my_landroid_party_mode
+            entity: >-
+              [[[
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                return p ? 'switch.' + p + '_party_mode' : '';
+              ]]]
             name: Party Mode
             icon: mdi:party-popper
             show_label: true
             label: |
               [[[
-                const s = states['switch.my_landroid_party_mode'];
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                const s = p ? states['switch.' + p + '_party_mode'] : undefined;
                 return (!s || s.state === 'unavailable' || s.state === 'unknown') ? 'Asleep' : (s.state === 'on' ? 'On' : 'Off');
               ]]]
             state:
@@ -223,13 +284,18 @@ views:
           # Lock — child lock on the mower's buttons.
           - type: custom:button-card
             template: worx_tile
-            entity: switch.my_landroid_lock
+            entity: >-
+              [[[
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                return p ? 'switch.' + p + '_lock' : '';
+              ]]]
             name: Lock
             icon: mdi:lock
             show_label: true
             label: |
               [[[
-                const s = states['switch.my_landroid_lock'];
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                const s = p ? states['switch.' + p + '_lock'] : undefined;
                 return (!s || s.state === 'unavailable' || s.state === 'unknown') ? 'Asleep' : (s.state === 'on' ? 'Locked' : 'Unlocked');
               ]]]
             state:
@@ -252,15 +318,25 @@ views:
     theme: worx
     type: masonry
     cards:
-      - type: entities
-        title: Up next
-        entities:
-          - entity: sensor.my_landroid_next_schedule
-            name: Next scheduled start
-            icon: mdi:calendar-clock
-          - entity: sensor.my_landroid_daily_progress
-            name: Today's progress
-            icon: mdi:progress-clock
+      - type: custom:auto-entities
+        show_empty: false
+        card_param: cards
+        filter:
+          template: |
+            {% set p = state_attr('sensor.landroid_mower_reference', 'prefix') %}
+            {% set ns = namespace(cards = []) %}
+            {% if p %}
+            {% set ns.cards = ns.cards + [{'type': 'entities', 'title': 'Up next', 'entities': [
+              {'entity': 'sensor.' ~ p ~ '_next_schedule', 'name': 'Next scheduled start', 'icon': 'mdi:calendar-clock'},
+              {'entity': 'sensor.' ~ p ~ '_daily_progress', 'name': "Today's progress", 'icon': 'mdi:progress-clock'},
+            ]}] %}
+            {% endif %}
+            {{ ns.cards }}
+        # Fallback WITHOUT a cards key: auto-entities merges this card config
+        # OVER the generated card list, so a `cards: []` here would wipe the
+        # generated cards (they simply never render).
+        card:
+          type: vertical-stack
 
       # Quick actions (same tiles as the Home view, 3 columns).
       - type: grid
@@ -271,17 +347,26 @@ views:
             template: worx_tile
             name: Edge routine
             icon: mdi:grass
-            entity: lawn_mower.my_landroid
+            entity: >-
+              [[[
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                return p ? 'lawn_mower.' + p : '';
+              ]]]
             show_label: true
             label: |
               [[[
-                return states['lawn_mower.my_landroid'] ? (states['lawn_mower.my_landroid'].state === 'unavailable' ? 'Asleep' : 'Tap to run') : 'Tap to run';
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                const mower = p ? states['lawn_mower.' + p] : undefined;
+                return mower ? (mower.state === 'unavailable' ? 'Asleep' : 'Tap to run') : 'Tap to run';
               ]]]
             tap_action:
               action: perform-action
               perform_action: button.press
               target:
-                entity_id: button.my_landroid_edge_cut
+                entity_id: >-
+                  [[[
+                    return 'button.' + states['sensor.landroid_mower_reference']?.attributes?.prefix + '_edge_cut';
+                  ]]]
             styles:
               icon:
                 - color: "#FF8200"
@@ -295,11 +380,16 @@ views:
             template: worx_tile
             name: One Time
             icon: mdi:calendar-clock
-            entity: lawn_mower.my_landroid
+            entity: >-
+              [[[
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                return p ? 'lawn_mower.' + p : '';
+              ]]]
             show_label: true
             label: |
               [[[
-                const mower = states['lawn_mower.my_landroid'];
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                const mower = p ? states['lawn_mower.' + p] : undefined;
                 const mins = states['input_number.landroid_ots_minutes'];
                 if (!mower || mower.state === 'unavailable') return 'Asleep';
                 return mins ? Math.round(parseFloat(mins.state)) + ' min' : '';
@@ -321,13 +411,18 @@ views:
 
           - type: custom:button-card
             template: worx_tile
-            entity: switch.my_landroid_party_mode
+            entity: >-
+              [[[
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                return p ? 'switch.' + p + '_party_mode' : '';
+              ]]]
             name: Party Mode
             icon: mdi:party-popper
             show_label: true
             label: |
               [[[
-                const s = states['switch.my_landroid_party_mode'];
+                const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                const s = p ? states['switch.' + p + '_party_mode'] : undefined;
                 return (!s || s.state === 'unavailable' || s.state === 'unknown') ? 'Asleep' : (s.state === 'on' ? 'On' : 'Off');
               ]]]
             state:
@@ -345,37 +440,49 @@ views:
       # Weekly grid. Reads the normalized `schedule_entries` attribute from the
       # next-schedule sensor (day / start / duration / boundary=edge flag).
       # Hidden entirely while the sensor is unavailable (mower asleep) so no
-      # raw error data shows.
+      # raw error data shows. The condition keys off the discovery sensor's
+      # `next_schedule_state` attribute — state conditions cannot reference a
+      # dynamic entity ID, and `condition: template` is not accepted by
+      # conditional cards on all HA frontend versions.
       - type: conditional
         conditions:
           - condition: state
-            entity: sensor.my_landroid_next_schedule
-            state_not: unavailable
-          - condition: state
-            entity: sensor.my_landroid_next_schedule
-            state_not: unknown
+            entity: sensor.landroid_mower_reference
+            attribute: next_schedule_state
+            state_not:
+              - unavailable
+              - unknown
+              - none
         card:
-          type: custom:flex-table-card
-          title: Weekly schedule
-          entities:
-            include:
-              - sensor.my_landroid_next_schedule
-          strict: false
-          columns:
-            - data: schedule_entries.day
-              name: Day
-              # typeof guard: with an empty schedule flex-table hands the
-              # column an empty array, which is truthy in JS and would
-              # crash x.charAt.
-              modify: 'x && typeof x === "string" ? x.charAt(0).toUpperCase() + x.slice(1) : x'
-            - data: schedule_entries.start
-              name: Start
-            - data: schedule_entries.duration
-              name: Duration
-              suffix: " min"
-            - data: schedule_entries.boundary
-              name: Edge
-              modify: 'x ? "✓" : "–"'
+          type: custom:auto-entities
+          show_empty: false
+          card_param: cards
+          filter:
+            # Day column modify: typeof guard — with an empty schedule
+            # flex-table hands the column an empty array, which is truthy in
+            # JS and would crash x.charAt.
+            template: |
+              {% set p = state_attr('sensor.landroid_mower_reference', 'prefix') %}
+              {% set ns = namespace(cards = []) %}
+              {% if p %}
+              {% set ns.cards = ns.cards + [{
+                'type': 'custom:flex-table-card',
+                'title': 'Weekly schedule',
+                'entities': {'include': ['sensor.' ~ p ~ '_next_schedule']},
+                'strict': false,
+                'columns': [
+                  {'data': 'schedule_entries.day', 'name': 'Day',
+                   'modify': 'x && typeof x === "string" ? x.charAt(0).toUpperCase() + x.slice(1) : x'},
+                  {'data': 'schedule_entries.start', 'name': 'Start'},
+                  {'data': 'schedule_entries.duration', 'name': 'Duration', 'suffix': " min"},
+                  {'data': 'schedule_entries.boundary', 'name': 'Edge', 'modify': 'x ? "✓" : "–"'},
+                ],
+              }] %}
+              {% endif %}
+              {{ ns.cards }}
+          # Fallback WITHOUT a cards key — see the wrapper comment above.
+          card:
+            type: vertical-stack
 
       # =========================================================================
       # Schedule editor — add, edit and delete weekly schedule entries.
@@ -389,11 +496,12 @@ views:
       - type: conditional
         conditions:
           - condition: state
-            entity: sensor.my_landroid_next_schedule
-            state_not: unavailable
-          - condition: state
-            entity: sensor.my_landroid_next_schedule
-            state_not: unknown
+            entity: sensor.landroid_mower_reference
+            attribute: next_schedule_state
+            state_not:
+              - unavailable
+              - unknown
+              - none
         card:
           type: vertical-stack
           cards:
@@ -459,7 +567,11 @@ views:
                       action: perform-action
                       perform_action: landroid_cloud.delete_schedule
                       target:
-                        entity_id: lawn_mower.my_landroid
+                        entity_id: >-
+                          [[[
+                            const p = states['sensor.landroid_mower_reference']?.attributes?.prefix;
+                            return p ? 'lawn_mower.' + p : '';
+                          ]]]
                       data:
                         all_schedules: true
                       confirmation:
@@ -548,7 +660,8 @@ views:
                 square: false
               filter:
                 template: |
-                  {% set entries = state_attr('sensor.my_landroid_next_schedule', 'schedule_entries') or [] %}
+                  {% set p = state_attr('sensor.landroid_mower_reference', 'prefix') %}
+                  {% set entries = state_attr('sensor.' ~ p ~ '_next_schedule', 'schedule_entries') or [] if p else [] %}
                   {% set ns = namespace(tiles = []) %}
                   {% for e in entries %}
                   {% set ns.tiles = ns.tiles + [
@@ -575,26 +688,23 @@ views:
                   {% endfor %}
                   {{ ns.tiles }}
 
-      # Editor fallback while the mower sleeps (two cards because conditional
-      # conditions AND together — unavailable and unknown are OR cases).
+      # Editor fallback while the mower sleeps OR when the discovery sensor
+      # is missing (a missing sensor entity evaluates as unknown, which this
+      # condition also matches).
       - type: conditional
         conditions:
           - condition: state
-            entity: sensor.my_landroid_next_schedule
-            state: unavailable
+            entity: sensor.landroid_mower_reference
+            attribute: next_schedule_state
+            state:
+              - unavailable
+              - unknown
         card:
           type: markdown
           content: >-
-            **Schedule editor unavailable** – the mower is asleep and the cloud
-            refuses schedule writes while it is offline. Wake it (for example
-            with a Start command from the app) and the editor returns.
-      - type: conditional
-        conditions:
-          - condition: state
-            entity: sensor.my_landroid_next_schedule
-            state: unknown
-        card:
-          type: markdown
-          content: >-
-            **Schedule editor unavailable** – waiting for the mower's first
-            schedule sync. The editor returns once the mower is awake.
+            **Schedule editor unavailable** – either the mower is asleep (the
+            cloud refuses schedule writes while it is offline; wake it, for
+            example with a Start command from the app, and the editor returns),
+            or the `sensor.landroid_mower_reference` discovery sensor is
+            missing – make sure the `template:` block from
+            snippets/configuration-additions.yaml was pasted and reloaded.
